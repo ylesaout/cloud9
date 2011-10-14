@@ -102,8 +102,9 @@ sys.inherits(JVMRuntimePlugin, Plugin);
 
         switch (runner) {
             case "java":
-            file = file.substring("src/".length).replace(new RegExp('/', 'g'), '.').replace(/\.java$/, '');
-            jvmInstance = new JVMInstance(cwd, file);
+            var javaClass = file.substring("src/".length).replace(new RegExp('/', 'g'), '.').replace(/\.java$/, '');
+            console.log('java class: ' + javaClass);
+            jvmInstance = new JVMInstance(cwd, javaClass);
             build(cwd, function(compilationResult) {
               if (compilationResult.errors.length == 0)
                 start();
@@ -139,6 +140,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         }
         
         function start() {
+            console.log('JVM started');
             jvmInstance.on('output', sender("stdout"));
             jvmInstance.on("err", sender("stderr"));
 
