@@ -36,17 +36,17 @@ module.exports = ext.register("ext/watcher/watcher", {
             ide.socket.json.send({
                 "command"     : "watcher",
                 "type"        : "watchFile",
-                "path"        : ide.workspaceDir + path.slice(ide.davPrefix.length)
-            });
+                "path"        : path.slice(ide.davPrefix.length).replace(/^\//, "")
+            }));
         }
         
         function sendUnwatchFile(path) {
             ide.socket.json.send({
                 "command"     : "watcher",
                 "type"        : "unwatchFile",
-                "path"        : ide.workspaceDir + path.slice(ide.davPrefix.length)
-            });
-        }
+                "path"        : path.slice(ide.davPrefix.length).replace(/^\//, "")
+            }));
+        }           
        
         function checkPage() {
             var page = tabEditors.getPage(),
@@ -206,7 +206,8 @@ module.exports = ext.register("ext/watcher/watcher", {
                 }
                 break;
             case "change":
-                if (!changedPaths[path]) {
+                if (!changedPaths[path] && 
+                    (new Date(message.lastmod).getTime() != new Date(tabEditors.getPage().$model.queryValue('@modifieddate')).getTime())) {
                     changedPaths[path] = path;
                     ++changedPathCount;
                     checkPage();

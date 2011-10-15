@@ -90,11 +90,12 @@ module.exports = ext.register("ext/editors/editors", {
             htmlNode : document.body,
             childNodes: [
                 new apf.tab({
-                    id       : "tabEditors",
-                    skin     : "editor_tab",
-                    style    : "height : 100%",
-                    buttons  : "close,scale",
-                    onfocus  : function(e){
+                    id      : "tabEditors",
+                    skin    : "editor_tab",
+                    style   : "height : 100%",
+                    buttons : "close,scale",
+                    overactivetab  : true,
+                    onfocus        : function(e){
                         _self.switchfocus(e);
                     },
                     onbeforeswitch : function(e){
@@ -279,16 +280,11 @@ module.exports = ext.register("ext/editors/editors", {
                 page.$editor = editor;
                 page.setAttribute("tooltip", "[@path]");
                 page.setAttribute("class",
-                    "{parseInt([@saving]) ? (tabEditors.getPage(tabEditors.activepage) == this ? 'saving_active' : 'saving') : \
+                    "{parseInt([@saving]) || parseInt([@lookup]) ? (tabEditors.getPage(tabEditors.activepage) == this ? 'saving_active' : 'saving') : \
                     ([@loading] ? (tabEditors.getPage(tabEditors.activepage) == this ? 'loading_active' : 'loading') : '')}"
                 );
                 page.setAttribute("model", page.$model = model);
                 page.$model.load(xmlNode);
-                
-                //this is very bad, should be removed
-                setTimeout(function(){
-                    editor.setState && editor.setState(doc, doc.state);
-                }, 1000);
             });
 
         if (init)
@@ -298,7 +294,7 @@ module.exports = ext.register("ext/editors/editors", {
         
         doc.addEventListener("setnode", function(e) {
             fake.$model.load(e.node);
-            ide.dispatchEvent("afteropenfile", {doc: doc, node: e.node});
+            ide.dispatchEvent("afteropenfile", {doc: doc, node: e.node, editor: editor});
         });
 
         fake.$at.addEventListener("afterchange", function(e) {

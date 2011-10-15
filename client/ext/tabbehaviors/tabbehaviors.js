@@ -39,7 +39,7 @@ module.exports = ext.register("ext/tabbehaviors/tabbehaviors", {
         "tab8": {hint: "navigate to the eighth tab"},
         "tab9": {hint: "navigate to the ninth tab"},
         "tab0": {hint: "navigate to the tenth tab"},
-        "showtabintree": {hint: "show the current tab in the file tree"}
+        "revealtab": {hint: "reveal current tab in the file tree"}
     },
     hotitems   : {},
 
@@ -50,8 +50,15 @@ module.exports = ext.register("ext/tabbehaviors/tabbehaviors", {
         
         this.nodes.push(
             mnuTabs.appendChild(new apf.item({
+<<<<<<< HEAD
                 caption : "Show Current Tab in File Tree",
                 onclick : _self.showtabintree
+=======
+                caption : "Reveal in File Tree",
+                onclick : function() {
+                    _self.revealtab();
+                }
+>>>>>>> master
             })),
             mnuTabs.appendChild(new apf.item({
                 caption : "Close Tab",
@@ -74,8 +81,15 @@ module.exports = ext.register("ext/tabbehaviors/tabbehaviors", {
                 id : "mnuContextTabs",
                 childNodes : [
                     new apf.item({
+<<<<<<< HEAD
                         caption : "Show in File Tree",
                         onclick : _self.showtabintree
+=======
+                        caption : "Reveal in File Tree",
+                        onclick : function() {
+                            _self.revealtab(tabEditors.contextPage);
+                        }
+>>>>>>> master
                     }),
                     new apf.item({
                         caption : "Close Tab",
@@ -96,7 +110,11 @@ module.exports = ext.register("ext/tabbehaviors/tabbehaviors", {
                 ]
             }))
         );
+<<<<<<< HEAD
         this.hotitems["showtabintree"] = [this.nodes[0]];
+=======
+        this.hotitems["revealtab"]     = [this.nodes[0]];
+>>>>>>> master
         this.hotitems["closetab"]      = [this.nodes[1]];
         this.hotitems["closealltabs"]  = [this.nodes[2]];
         this.hotitems["closeallbutme"] = [this.nodes[3]];
@@ -232,12 +250,17 @@ module.exports = ext.register("ext/tabbehaviors/tabbehaviors", {
     },
     
     /**
+<<<<<<< HEAD
      * Gain focus on the file tree item's current selected tab.
+=======
+     * Scrolls to the selected tab's file path in the "Project Files" tree
+>>>>>>> master
      * 
      * Works by Finding the node related to the active tab in the tree, and
      * unfolds its parent folders until the node can be reached by an xpath
      * selector and focused, to finally scroll to the selected node.
      */
+<<<<<<< HEAD
     showtabintree: function(e) {
         if (!tabEditors.getPage())
             return;
@@ -245,10 +268,21 @@ module.exports = ext.register("ext/tabbehaviors/tabbehaviors", {
         var page = tabEditors.getPage();
         var node = trFiles.queryNode('//file[@path="' + page.name + '"]');
         
+=======
+    revealtab: function(page) {
+        if (!page || page.command)
+            page = tabEditors.getPage();
+        if (!page)
+            return false;
+
+        var node = trFiles.queryNode('//file[@path="' + page.name + '"]');
+
+>>>>>>> master
         if (node) {
             trFiles.expandAndSelect(node);
             trFiles.focus();
             scrollToFile();
+<<<<<<< HEAD
         }
         else {
             var parts = page.name.substr(ide.davPrefix.length).replace(/^\//, "").split("/");
@@ -269,6 +303,33 @@ module.exports = ext.register("ext/tabbehaviors/tabbehaviors", {
                 scrollToFile();
             });
         }
+=======
+            return;
+        }
+
+        var parts = page.name.substr(ide.davPrefix.length).replace(/^\//, "").split("/");
+        var file = parts.pop();
+        var pathList = ["folder[1]"];
+        var str = "";
+        
+        parts.forEach(function(part) {
+            str += '/folder[@name="' + part + '"]';
+            pathList.push("folder[1]" + str);
+        });
+        
+        var xpath = pathList[pathList.length - 1];
+        var docNode = page.$doc.getNode();
+        // Show spinner in active tab the file is being looked up
+        apf.xmldb.setAttribute(docNode, "lookup", "1");
+        
+        trFiles.expandList(pathList, function() {
+            trFiles.select(trFiles.queryNode(xpath + '/file[@name="' + file + '"]'));
+            trFiles.focus();
+            scrollToFile();
+            // Hide spinner in active tab
+            apf.xmldb.removeAttribute(docNode, "lookup");
+        });
+>>>>>>> master
         
         function scrollToFile() {
             var htmlNode = apf.xmldb.getHtmlNode(trFiles.selected, trFiles);
