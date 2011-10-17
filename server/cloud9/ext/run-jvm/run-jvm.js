@@ -1,5 +1,5 @@
 /**
- * Python Runtime Module for the Cloud9 IDE
+ * Java Runtime Module for the Cloud9 IDE
  *
  * @copyright 2010, Ajax.org B.V.
  * @license GPLv3 <http://www.gnu.org/licenses/gpl.txt>
@@ -42,7 +42,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         var cmd = (message.command || "").toLowerCase(),
             res = true;
         switch (cmd) {
-            case "run": case "rundebug": case "rundebugbrk": // We don't debug python just yet.
+            case "run": case "rundebug": case "rundebugbrk": // We don"t debug python just yet.
                 this.$run(message, client);
                 break;
             case "kill":
@@ -69,21 +69,21 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         var _self = this;
 
         if (this.instance)
-            return _self.ide.error("Child process already running!", 1, message);
+            return _self.workspace.error("Child process already running!", 1, message);
 
-        var file = _self.ide.workspaceDir + "/" + message.file;
+        var file = _self.workspace.workspaceDir + "/" + message.file;
         
         Path.exists(file, function(exists) {
            if (!exists)
-               return _self.ide.error("File does not exist: " + message.file, 2, message);
+               return _self.workspace.error("File does not exist: " + message.file, 2, message);
             
            var cwd = _self.ide.workspaceDir + "/" + (message.cwd || "");
            Path.exists(cwd, function(exists) {
                if (!exists)
-                   return _self.ide.error("cwd does not exist: " + message.cwd, 3, message);
+                   return _self.workspace.error("cwd does not exist: " + message.cwd, 3, message);
                 // lets check what we need to run
                 var args = [].concat(file).concat(message.args || []);
-                // message.runner = 'java', 'jy', 'jrb', 'groovy', 'js-rhino'
+                // message.runner = "java", "jy", "jrb", "groovy", "js-rhino"
                 _self.$runJVM(message.runner, file.substring(cwd.length), args, cwd, message.env || {}, message.debug || false);
            });
         });
@@ -102,30 +102,30 @@ sys.inherits(JVMRuntimePlugin, Plugin);
 
         switch (runner) {
             case "java":
-            var javaClass = file.substring("src/".length).replace(new RegExp('/', 'g'), '.').replace(/\.java$/, '');
-            console.log('java class: ' + javaClass);
-            jvmInstance = new JVMInstance(cwd, javaClass);
-            build(cwd, function(compilationResult) {
-              if (compilationResult.errors.length == 0)
-                start();
-              else {
-                // TODO send compilation errors
-                console.error(JSON.stringify(compilationResult));
-              }
-            });
-            break
+                var javaClass = file.substring("src/".length).replace(new RegExp("/", "g"), ".").replace(/\.java$/, "");
+                console.log("java class: " + javaClass);
+                jvmInstance = new JVMInstance(cwd, javaClass);
+                build(cwd, function(compilationResult) {
+                    if (compilationResult.errors.length == 0)
+                        start();
+                    else {
+                        // TODO send compilation errors
+                        console.error(JSON.stringify(compilationResult));
+                    }
+                });
+                break;
             case "jpy":
-                jvmInstance = new ScriptJVMInstance(cwd, 'jython', file);
-            break
+                jvmInstance = new ScriptJVMInstance(cwd, "jython", file);
+                break;
             case "jrb":
-                jvmInstance = new ScriptJVMInstance(cwd, 'jruby1.8.7', file);
-            break
+                jvmInstance = new ScriptJVMInstance(cwd, "jruby1.8.7", file);
+                break;
             case "groovy":
-                jvmInstance = new ScriptJVMInstance(cwd, 'groovy', file);
-            break
+                jvmInstance = new ScriptJVMInstance(cwd, "groovy", file);
+                break;
             case "js-rhino":
-                console.error('JS-Rhino not tested yet');
-            break
+                console.error("JS-Rhino not tested yet");
+                break;
             default:
                 console.error("unsupported runtime environment")
         }
@@ -135,20 +135,20 @@ sys.inherits(JVMRuntimePlugin, Plugin);
             case "jrb":
             case "groovy":
             case "js-rhino":
-            start();
-            break
+                start();
+                break;
         }
         
         function start() {
-            console.log('JVM started');
-            jvmInstance.on('output', sender("stdout"));
+            console.log("JVM started");
+            jvmInstance.on("output", sender("stdout"));
             jvmInstance.on("err", sender("stderr"));
 
             _self.instance = jvmInstance;
             _self.ide.broadcast(JSON.stringify({"type": "node-start"}), _self.name);
             jvmInstance.start();
 
-            jvmInstance.on('exit', function(code) {
+            jvmInstance.on("exit", function(code) {
                 _self.ide.broadcast(JSON.stringify({"type": "node-exit"}), _self.name);
                 _self.debugClient = false;
                 delete _self.instance;
