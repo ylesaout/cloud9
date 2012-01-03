@@ -49,14 +49,6 @@ module.exports = {
     },
     
     /**
-     * Invoked on a successful parse
-     * @param ast the resulting AST in treehugger format
-     */
-    onParse: function(ast, callback) {
-        callback();
-    },
-    
-    /**
      * Invoked when the document has been updated (possibly after a certain interval)
      * @param doc the document object
      */
@@ -94,7 +86,7 @@ module.exports = {
      * Invoked when an outline is required
      * @return a JSON outline structure or null if not supported
      */
-    outline: function(ast, callback) {
+    outline: function(doc, ast, callback) {
         callback();
     },
     

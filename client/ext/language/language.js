@@ -90,6 +90,17 @@ module.exports = ext.register("ext/language/language", {
             var heading = e.ext.getHeading("Language Support");
             heading.insertMarkup(settings);
         });
+        
+        worker.on("serverProxy", function(e) {
+            console.log("proxyMessage", e.data);
+            ide.send(JSON.stringify(e.data));
+        });
+        
+        ide.addEventListener("socketMessage", function(e) {
+          var message = e.message;
+          console.log("language: ", message);
+          worker.emit("serverProxy", {data: message});
+        });
 	},
 
     init : function() {

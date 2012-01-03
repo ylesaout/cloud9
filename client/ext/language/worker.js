@@ -15,6 +15,7 @@ define(function(require, exports, module) {
 var oop = require("ace/lib/oop");
 var Mirror = require("ace/worker/mirror").Mirror;
 var tree = require('treehugger/tree');
+var EventEmitter = require("ace/lib/event_emitter").EventEmitter;
 
 var WARNING_LEVELS = {
     error: 3,
@@ -25,12 +26,39 @@ var WARNING_LEVELS = {
 // Leaking into global namespace of worker, to allow handlers to have access
 disabledFeatures = {};
 
+var ServerProxy = function(sender) {
+
+  this.emitter = Object.create(EventEmitter);
+  this.emitter.emit = this.emitter._dispatchEvent;
+
+  this.send = function(data) {
+      sender.emit("serverProxy", data);
+  };
+
+  this.subscribe = function(messageType, messageSubtype, callback) {
+    var channel = messageType;
+    if (messageSubtype)
+       channel += (":" + messageSubtype);
+    console.log("subscribe to: " + channel);
+    this.emitter.on(channel, callback);
+  };
+
+  this.onMessage = function(msg) {
+    var channel = msg.type;
+    if (msg.subtype)
+      channel += (":" + msg.subtype);
+    console.log("publish to: " + channel);
+    this.emitter.emit(channel, msg);
+  }
+};
+
 var LanguageWorker = exports.LanguageWorker = function(sender) {
     var _self = this;
     this.handlers = [];
     this.currentMarkers = [];
     this.$lastAggregateActions = {};
     this.$warningLevel = "info";
+    this.serverProxy = new ServerProxy(sender);
     
     Mirror.call(this, sender);
     this.setTimeout(500);
@@ -58,6 +86,9 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
     });
     sender.on("fetchVariablePositions", function(event) {
         _self.sendVariablePositions(event);
+    });
+    sender.on("serverProxy", function(event) {
+        _self.serverProxy.onMessage(event.data);
     });
 };
 
@@ -129,6 +160,7 @@ function asyncParForEach(array, fn, callback) {
      */
     this.register = function(path) {
         var handler = require(path);
+        handler.proxy = this.serverProxy;
         this.handlers.push(handler);
     };
 
@@ -417,7 +449,6 @@ function asyncParForEach(array, fn, callback) {
         // Check if anybody requires parsing for its code completion
         var ast, currentNode;
         var _self = this;
-        
         
         asyncForEach(this.handlers, function(handler, next) {
             if (!ast && handler.handlesLanguage(_self.$language) && handler.completionRequiresParsing()) {

@@ -72,6 +72,16 @@ function replaceText(editor, prefix, newText) {
 }
 
 module.exports = {
+
+    getFilePath : function(filePath) {
+        if (typeof filePath === "undefined")
+            filePath = tabEditors.getPage().$model.data.getAttribute("path");
+        if (filePath.indexOf("/workspace/") === 0)
+            filePath = filePath.substr(11);
+
+        return filePath;
+    },
+
     hook: function(language, worker) {
         var _self = this;
         worker.on("complete", function(event) {

@@ -34,3 +34,6 @@
 [submodule "support/treehugger"]
 	path = support/treehugger
 	url = git://github.com/ajaxorg/treehugger.git
+[submodule "support/jvm_features"]
+	path = support/jvm_features
+	url = git@github.com:ajaxorg/jvm_features.git
