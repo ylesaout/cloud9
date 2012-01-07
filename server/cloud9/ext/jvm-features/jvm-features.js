@@ -74,14 +74,14 @@ sys.inherits(JVMFeatures, Plugin);
     
     this.connect = function(user, client) {
         var _self = this;
-        //  init the eclipse instance for that user
-        console.log("connect hook called");
 
+        //  init the eclipse instance for that user
         netutil.findFreePort(this.ECLIPSE_START_PORT, this.ECLIPSE_START_PORT + 1000, "localhost",
           function(err, port) {
             if (err)
               return _self.$error("Could not find a free port", 1, err);
-            var eclipseClient = new EclipseClient("localhost", port, "/home/eweda/runtime-CodeCompletePlugin.Cloud9Eclipse");
+            var eclipseClient = new EclipseClient("localhost", port,
+                "/home/eweda/runtime-CodeCompletePlugin.Cloud9Eclipse");
             eclipseClient.on("lifecycle:connected", function() {
               console.log("Eclipse session initalied");
               _self.eclipseClient = eclipseClient;
@@ -92,8 +92,10 @@ sys.inherits(JVMFeatures, Plugin);
     };
     
     this.disconnect = function(user, client) {
-        // TODO kill the eclipse instance of that user
-        console.log("disconnect hook called");
+        if (this.eclipseClient) {
+          this.eclipseClient.disconnect();
+          this.eclipseClient = null;
+        }
         return true;
     };
     
