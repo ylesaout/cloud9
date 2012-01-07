@@ -18,7 +18,8 @@ module.exports = ext.register("ext/javalanguage/javalanguage", {
     deps    : [editors, language],
     nodes   : [],
     alone   : true,
-    command  : "jvm_features",
+    offline : false,
+    command : "jvm_features",
 
     init : function() {
         language.registerLanguageHandler("ext/javalanguage/processor");

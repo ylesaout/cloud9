@@ -11,6 +11,7 @@ var ide = require("core/ide");
 var editors = require("ext/editors/editors");
 var noderunner = require("ext/noderunner/noderunner");
 var WorkerClient = require("ace/worker/worker_client").WorkerClient;
+var save = require("ext/save/save");
 
 var complete = require('ext/language/complete');
 var marker = require('ext/language/marker');
@@ -94,6 +95,19 @@ module.exports = ext.register("ext/language/language", {
         worker.on("serverProxy", function(e) {
             console.log("proxyMessage", e.data);
             ide.send(JSON.stringify(e.data));
+        });
+        
+        worker.on("commandRequest", function(e) {
+            var cmd = e.data;
+            if (cmd.command == "save") {
+              save.quicksave(tabEditors.getPage(), function() {
+                worker.emit("commandComplete", {
+                 data: {
+                  command: cmd.command,
+                  success: true
+                }});
+              });
+            }
         });
         
         ide.addEventListener("socketMessage", function(e) {

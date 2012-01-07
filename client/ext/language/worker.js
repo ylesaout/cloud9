@@ -26,6 +26,15 @@ var WARNING_LEVELS = {
 // Leaking into global namespace of worker, to allow handlers to have access
 disabledFeatures = {};
 
+sender.once = EventEmitter.once = function(event, fun) {
+  var _self = this;
+  var newCallback = function() {
+    fun && fun.apply(this, arguments);
+    _self.removeEventListener(event, newCallback);
+  };
+  this.addEventListener(event, newCallback);
+};
+
 var ServerProxy = function(sender) {
 
   this.emitter = Object.create(EventEmitter);
@@ -34,13 +43,28 @@ var ServerProxy = function(sender) {
   this.send = function(data) {
       sender.emit("serverProxy", data);
   };
+  
+  this.once = function(messageType, messageSubtype, callback) {
+    var channel = messageType;
+    if (messageSubtype)
+       channel += (":" + messageSubtype);
+    this.emitter.once(channel, callback);
+  };
 
   this.subscribe = function(messageType, messageSubtype, callback) {
     var channel = messageType;
     if (messageSubtype)
        channel += (":" + messageSubtype);
     console.log("subscribe to: " + channel);
-    this.emitter.on(channel, callback);
+    this.emitter.addEventListener(channel, callback);
+  };
+  
+  this.unsubscribe = function(messageType, messageSubtype, f) {
+    var channel = messageType;
+    if (messageSubtype)
+       channel += (":" + messageSubtype);
+    console.log("unsubscribe from: " + channel);
+    this.emitter.removeEventListener(channel, f);
   };
 
   this.onMessage = function(msg) {
@@ -161,6 +185,7 @@ function asyncParForEach(array, fn, callback) {
     this.register = function(path) {
         var handler = require(path);
         handler.proxy = this.serverProxy;
+        handler.sender = this.sender;
         this.handlers.push(handler);
     };
 

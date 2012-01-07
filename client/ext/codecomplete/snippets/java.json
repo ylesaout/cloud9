@@ -3,7 +3,7 @@
     "if": "if (^^) {\n    \n}",
     "ifelse": "if (^^) {\n    \n} else {\n    \n}",
     "while": "while (^^) {\n    \n}",
-    "dowhile": "do {\n    \n} while (^^);",
+    "dowhile": "do {\n    ^^\n} while ();",
     "switch": "switch (^^key) {\n    case value:\n      \n      break;\n\n    default:\n      break;\n    }",
     "for": "for (int ^^i = 0; i < markers.length; i++) {\n    \n}",
     "foreach": "for (^^Object o : collection) {\n    \n}",

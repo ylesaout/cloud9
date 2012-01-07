@@ -31,37 +31,28 @@ sys.inherits(JVMFeatures, Plugin);
 
         var _self = this;
         
-        /*
-        netutil.findFreePort(this.ECLIPSE_START_PORT, this.ECLIPSE_START_PORT + 1000, "localhost",
-          function(err, port) {
-            if (err)
-              return _self.$error("Could not find a free port", 1, err);
-            var client = new EclipseClient("localhost", port, "/home/eweda/runtime-CodeCompletePlugin.Cloud9Eclipse");
-            client.on("lifecycle:connected", function() {
-              console.log("Eclipse session initalied");
-              // TODO do something here
-            });
-            client.initEclipseSession();
-        });
 
-        client.codeComplete("sossa1", "src/HelloWorld2.java", 267,
-          function(data) {
-            if (! data.success)
-              return _self.$error("Could not execute complete request", 2);
-            var suggestions = data.body;
-            console.log("Suggestions: " + suggestions);
-            for (var i = 0; i < suggestions.length; i++) {
-              console.log(util.inspect(suggestions[i], true, null));
-            }
-        });
-        */
+        if (! this.eclipseClient)
+          return this.$error("No eclipse session running!", 3);
+
         var subCmd = (message.subcommand || "").toLowerCase(),
             res = true;
         switch (subCmd) {
             case "complete":
-              this.sendResult(0, cmd + ":" + subCmd, {
-                matches: []
-              });
+                this.eclipseClient.codeComplete("sossa1", message.file, message.offset,
+                  function(data) {
+                    if (! data.success)
+                      return _self.$error("Could not execute complete request", 2);
+                    var matches = data.body;
+                    var absFilePath = Path.join(_self.basePath, message.file);
+                    console.log("file: " + absFilePath + ":" + message.offset + " & matches: " + matches);
+                    _self.sendResult(0, cmd + ":" + subCmd, {
+                      matches: matches
+                    });
+                    for (var i = 0; i < matches.length; i++) {
+                      console.log(util.inspect(matches[i], true, null));
+                    }
+                });
               break;
             case "outline":
                 break;
@@ -82,13 +73,27 @@ sys.inherits(JVMFeatures, Plugin);
     };
     
     this.connect = function(user, client) {
-        // TODO get to know user and client and how to store and get from the session
-        // TODO maybe init the eclipse instance for that user
+        var _self = this;
+        //  init the eclipse instance for that user
+        console.log("connect hook called");
+
+        netutil.findFreePort(this.ECLIPSE_START_PORT, this.ECLIPSE_START_PORT + 1000, "localhost",
+          function(err, port) {
+            if (err)
+              return _self.$error("Could not find a free port", 1, err);
+            var eclipseClient = new EclipseClient("localhost", port, "/home/eweda/runtime-CodeCompletePlugin.Cloud9Eclipse");
+            eclipseClient.on("lifecycle:connected", function() {
+              console.log("Eclipse session initalied");
+              _self.eclipseClient = eclipseClient;
+            });
+            eclipseClient.initEclipseSession();
+        });
         return true;
     };
     
     this.disconnect = function(user, client) {
         // TODO kill the eclipse instance of that user
+        console.log("disconnect hook called");
         return true;
     };
     

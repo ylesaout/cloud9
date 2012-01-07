@@ -73,15 +73,6 @@ function replaceText(editor, prefix, newText) {
 
 module.exports = {
 
-    getFilePath : function(filePath) {
-        if (typeof filePath === "undefined")
-            filePath = tabEditors.getPage().$model.data.getAttribute("path");
-        if (filePath.indexOf("/workspace/") === 0)
-            filePath = filePath.substr(11);
-
-        return filePath;
-    },
-
     hook: function(language, worker) {
         var _self = this;
         worker.on("complete", function(event) {
@@ -312,7 +303,9 @@ module.exports = {
         
         // Remove out-of-date matches
         for (var i = 0; i < matches.length; i++) {
-            if(matches[i].name.indexOf(identifier) !== 0) {
+            // change the condition to fit the java package abbreviation
+            // maybe also compare with ignoring cases
+            if(matches[i].name.indexOf(identifier) == -1) {
                 matches.splice(i, 1);
                 i--;
             }
@@ -322,7 +315,9 @@ module.exports = {
             replaceText(editor, identifier, matches[0].replaceText);
         }
         else if (matches.length > 0) {
-            this.showCompletionBox(matches, identifier);
+            // identifier may not match the java package abbreviation
+            // I want to highlight starting from the class name
+            this.showCompletionBox(matches, "");
         }
         else {
             if(typeof barCompleterCont !== 'undefined')
