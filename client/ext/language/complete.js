@@ -300,16 +300,17 @@ module.exports = {
         clearTimeout(this.hideTimer);
     
         var matches = event.data;
+        var identifierLowered = identifier.toLowerCase();
         
         // Remove out-of-date matches
         for (var i = 0; i < matches.length; i++) {
             // change the condition to fit the java package abbreviation
             // maybe also compare with ignoring cases
-            if(matches[i].name.indexOf(identifier) == -1) {
+            if(matches[i].name.toLowerCase().indexOf(identifierLowered) == -1) {
                 matches.splice(i, 1);
                 i--;
             }
-        }        
+        }
         
         if (matches.length === 1 && !this.forceBox) {
             replaceText(editor, identifier, matches[0].replaceText);
@@ -317,7 +318,7 @@ module.exports = {
         else if (matches.length > 0) {
             // identifier may not match the java package abbreviation
             // I want to highlight starting from the class name
-            this.showCompletionBox(matches, "");
+            this.showCompletionBox(matches, identifier);
         }
         else {
             if(typeof barCompleterCont !== 'undefined')
