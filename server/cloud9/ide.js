@@ -138,7 +138,7 @@ Ide.DEFAULT_PLUGINS = [
     "ext/guidedtour/guidedtour",
     "ext/quickstart/quickstart",
     "ext/jslanguage/jslanguage",
-    "ext/javalanguage/javalanguage"
+    "ext/javalanguage/javalanguage",
     "ext/autotest/autotest",
     "ext/tabsessions/tabsessions"
     //"ext/acebugs/acebugs"
