@@ -318,50 +318,52 @@ function asyncParForEach(array, fn, callback) {
         var hintMessage = ""; // this.checkForMarker(pos) || "";
         // Not going to parse for this, only if already parsed successfully
         var aggregateActions = {markers: [], hint: null, enableRefactorings: []};
+        
+        function cursorMoved() {
+            asyncForEach(_self.handlers, function(handler, next) {
+                if (handler.handlesLanguage(_self.$language)) {
+                    handler.onCursorMovedNode(_self.doc, ast, pos, currentNode, function(response) {
+                        if (!response)
+                            return next();
+                        if (response.markers && response.markers.length > 0) {
+                            aggregateActions.markers = aggregateActions.markers.concat(response.markers);
+                        }
+                        if (response.enableRefactorings && response.enableRefactorings.length > 0) {
+                            aggregateActions.enableRefactorings = aggregateActions.enableRefactorings.concat(response.enableRefactorings);
+                        }
+                        if (response.hint) {
+                            // Last one wins, support multiple?
+                            aggregateActions.hint = response.hint;
+                        }
+                        next();
+                    });
+                }
+                else
+                    next();
+            }, function() {
+                if (aggregateActions.hint && !hintMessage) {
+                    hintMessage = aggregateActions.hint;
+                }
+                _self.scheduleEmit("markers", _self.filterMarkersBasedOnLevel(_self.currentMarkers.concat(aggregateActions.markers)));
+                _self.scheduleEmit("enableRefactorings", aggregateActions.enableRefactorings);
+                _self.lastCurrentNode = currentNode;
+                _self.setLastAggregateActions(aggregateActions);
+                _self.scheduleEmit("hint", {
+                    pos: pos,
+                	message: hintMessage
+                });
+            });
+
+        }
+        
         if (this.cachedAst) {
             var ast = this.cachedAst;
             var currentNode = ast.findNode({line: pos.row, col: pos.column});
             if (currentNode !== this.lastCurrentNode || pos.force) {
-                asyncForEach(this.handlers, function(handler, next) {
-                    if (handler.handlesLanguage(_self.$language)) {
-                        handler.onCursorMovedNode(_self.doc, ast, pos, currentNode, function(response) {
-                            if (!response)
-                                return next();
-                            if (response.markers && response.markers.length > 0) {
-                                aggregateActions.markers = aggregateActions.markers.concat(response.markers);
-                            }
-                            if (response.enableRefactorings && response.enableRefactorings.length > 0) {
-                                aggregateActions.enableRefactorings = aggregateActions.enableRefactorings.concat(response.enableRefactorings);
-                            }
-                            if (response.hint) {
-                                // Last one wins, support multiple?
-                                aggregateActions.hint = response.hint;
-                            }
-                            next();
-                        });
-                    }
-                    else
-                        next();
-                }, function() {
-                    if (aggregateActions.hint && !hintMessage) {
-                        hintMessage = aggregateActions.hint;
-                    }
-                    _self.scheduleEmit("markers", _self.filterMarkersBasedOnLevel(_self.currentMarkers.concat(aggregateActions.markers)));
-                    _self.scheduleEmit("enableRefactorings", aggregateActions.enableRefactorings);
-                    _self.lastCurrentNode = currentNode;
-                    _self.setLastAggregateActions(aggregateActions);
-                    _self.scheduleEmit("hint", {
-                    	pos: pos,
-                    	message: hintMessage
-                    });
-                });
+                cursorMoved();
             }
         } else {
-            this.setLastAggregateActions(aggregateActions);
-            this.scheduleEmit("hint", {
-                pos: pos,
-            	message: hintMessage
-            });
+            cursorMoved();
         }
     };
 
@@ -416,6 +418,7 @@ function asyncParForEach(array, fn, callback) {
         });
     };
     
+    // TODO: BUG open an XML file and switch between, language doesn't update soon enough
     this.switchFile = function(path, language, code) {
         var oldPath = this.$path;
         code = code || "";
@@ -491,9 +494,11 @@ function asyncParForEach(array, fn, callback) {
         }, function() {
             var matches = [];
             
-            asyncParForEach(_self.handlers, function(handler, next) {
+            console.log("Results to get: " + _self.handlers.length);
+            asyncForEach(_self.handlers, function(handler, next) {
                 if (handler.handlesLanguage(_self.$language)) {
                     handler.complete(_self.doc, ast, pos, currentNode, function(completions) {
+                        console.log("Got some results");
                         if (completions)
                             matches = matches.concat(completions);
                         next();
@@ -502,6 +507,8 @@ function asyncParForEach(array, fn, callback) {
                 else
                     next();
             }, function() {
+                console.log("Matches:");
+                console.log(matches);
                 removeDuplicateMatches(matches);
                 // Sort by priority, score
                 matches.sort(function(a, b) {
