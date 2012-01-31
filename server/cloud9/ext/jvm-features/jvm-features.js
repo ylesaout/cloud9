@@ -54,6 +54,29 @@ sys.inherits(JVMFeatures, Plugin);
                     }
                 });
               break;
+            
+            // get locations of a variable or funcion call in the same file
+            case "get_locations":
+                this.eclipseClient.getLocations("sossa1", message.file, message.offset, message.length,
+                  function(data) {
+                    if (! data.success)
+                      return _self.$error("Could not execute get_locations request", 4);
+                    var matches = data.body;
+                    var absFilePath = Path.join(_self.basePath, message.file);
+                    console.log("file: " + absFilePath + ":" + message.offset + " & matches: " + matches);
+                    _self.sendResult(0, cmd + ":" + subCmd, {
+                      references: matches.filter(function(match) {
+                          return match.type == "reference";
+                        }),
+                      declarations: matches.filter(function(match) {
+                          return match.type == "declaration";
+                        })
+                      });
+                    for (var i = 0; i < matches.length; i++) {
+                      console.log(util.inspect(matches[i], true, null));
+                    }
+                });
+              break;
             case "outline":
                 break;
             default:
@@ -95,6 +118,7 @@ sys.inherits(JVMFeatures, Plugin);
         if (this.eclipseClient) {
           this.eclipseClient.disconnect();
           this.eclipseClient = null;
+          console.log("Eclipse session disposed");
         }
         return true;
     };

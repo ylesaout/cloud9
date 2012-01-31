@@ -7,6 +7,7 @@
 define(function(require, exports, module) {
 
 var baseLanguageHandler = require("ext/language/base_handler");
+var completeUtil = require("ext/codecomplete/complete_util");
 
 var handler = module.exports = Object.create(baseLanguageHandler);
 
@@ -30,29 +31,38 @@ var calculateOffset = function(doc, cursorPos) {
     return offset;
 };
 
+// TODO implement
+var calculatePosition = function(doc, offset) {
+    return null;
+};
+
+var saveFileAndDo = function(sender, callback) {
+  var checkSavingDone = function() {
+    var data = event.data;
+      if (data.command != saveCmd.command) 
+        return;
+      sender.removeEventListener("commandComplete", saveFileAndComplete);
+      if (! data.success) {
+        console.log("Couldn't save the file !!");
+        return callback(false);
+      }
+      console.log("Saving Complete");
+      callback(true);
+  };
+  sender.addEventListener("commandComplete", checkSavingDone);
+  sender.emit("commandRequest", { command: "save" });
+};
+
 handler.handlesLanguage = function(language) {
     return language === "java";
 };
 
 handler.complete = function(doc, fullAst, cursorPos, currentNode, callback) {
     var _self = this;
-
-    var saveCmd = {
-      command: "save"
-    };
     
-    var saveFileAndComplete = function(event) {
-      var data = event.data;
-      if (data.command != saveCmd.command) 
-        return;
-      _self.sender.removeEventListener("commandComplete", saveFileAndComplete);
-
-      if (! data.success) {
-        console.log("Couldn't save the file !!");
+    var doComplete = function(savingDone) {
+      if (! savingDone)
         return callback([]);
-      }
-      console.log("commandComplete");
-      
       // The file has been saved, proceed to code complete request
       var data = {
         command : "jvmfeatures",
@@ -67,12 +77,55 @@ handler.complete = function(doc, fullAst, cursorPos, currentNode, callback) {
       _self.proxy.send(data);
     };
 
-    this.sender.addEventListener("commandComplete", saveFileAndComplete);
-    this.sender.emit("commandRequest", saveCmd);
+    saveFileAndDo(doComplete);
 };
 
 handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode /*null*/, callback) {
-    callback();
+    var _self = this;
+
+    var line = doc.getLine(pos.row);
+    var identifier = completeUtil.retrieveFullIdentifier(line, pos.column);
+    console.log("Identifier:" + identifier);
+    var offset = calculateOffset(doc, identifier.start);
+    var data = {
+      command : "jvmfeatures",
+      subcommand : "get_locations",
+      file : getFilePath(_self.path),
+      offset: offset,
+      length: identifier.text.length
+    };
+
+    var doGetVariablePositions = function(savingDone) {
+      if (! savingDone)
+        return callback();
+
+      _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
+        console.log(message.body);
+        
+        var v = message.body;
+        var elementPos = {column: identifier.start, row: pos.row};
+        var others = [];
+
+        var appendToOthers = function(match) {
+           if(offset !== match.offset) {
+              var pos = calculatePosition(doc, match.offset);
+              others.push(pos);
+            }
+        };
+
+        v.declarations.forEach(appendToOthers);
+        v.references.forEach(appendToOthers);
+
+        callback({
+            length: identifier.text.length,
+            pos: elementPos,
+            others: others
+        });
+      });
+      _self.proxy.send(data);
+    };
+
+    saveFileAndDo(doGetVariablePositions);
 };
 
 handler.outline = function(doc, ast /* null */, callback) {

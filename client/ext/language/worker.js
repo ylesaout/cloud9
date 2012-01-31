@@ -109,6 +109,7 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
         _self.jumpToDefinition(event);
     });
     sender.on("fetchVariablePositions", function(event) {
+        console.log("fetch called");
         _self.sendVariablePositions(event);
     });
     sender.on("serverProxy", function(event) {

@@ -10,7 +10,7 @@ var completer = module.exports = Object.create(baseLanguageHandler);
 var snippetCache = {}; // extension -> snippets
     
 completer.handlesLanguage = function(language) {
-    return true;
+    return false;
 };
 
 completer.fetchText = function(path) {

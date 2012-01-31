@@ -13,6 +13,25 @@ function retrievePreceedingIdentifier(text, pos) {
     return buf.reverse().join("");
 }
 
+function retrieveFullIdentifier(text, pos) {
+    var buf = [];
+    var start;
+    var i = pos-1;
+    while (i >= 0 && ID_REGEX.test(text[i--]));
+    i++;
+    start = i;
+    for (; i < text.length; i++) {
+        if(ID_REGEX.test(text[i]))
+            buf.push(text[i]);
+        else
+            break;
+    }
+    return {
+        start: start,
+        text: buf.join("")
+    };
+}
+
 function prefixBinarySearch(items, prefix) {
     var startIndex = 0;
     var stopIndex = items.length - 1;
