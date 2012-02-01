@@ -32,12 +32,16 @@ var calculateOffset = function(doc, cursorPos) {
 };
 
 var calculatePosition = function(doc, offset) {
-    var row = 0, column = 0;
+    var row = 0, column;
     while (offset > 0) {
       offset -= doc.getLine(row++).length;
+      offset--; // consider the new line character(s)
     }
     row--;
-    column =  doc.getLine(row).length + offset;
+    if (offset < 0) {
+      offset++; // add the new line again
+    }
+    column = doc.getLine(row).length + offset;
     return {
       row: row,
       column: column
@@ -114,13 +118,14 @@ handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNo
       return callback();
     console.log(identifier);
     var offset = calculateOffset(doc, { row: cursorPos.row, column: identifier.start } );
+    var length = identifier.text.length;
     console.log("cursor: " + cursorPos.row + ":" + cursorPos.column + " & offset: " + offset + " & length: " + identifier.text.length);
     var command = {
       command : "jvmfeatures",
       subcommand : "get_locations",
       file : getFilePath(_self.path),
       offset: offset,
-      length: identifier.text.length
+      length: length
     };
 
     var doGetVariablePositions = function(savingDone) {
@@ -137,6 +142,7 @@ handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNo
         console.log("variable positions retrieved");
 
         highlightVariable(v);
+        enableRefactorings.push("renameVariable");
         doneHighlighting();
       });
       _self.proxy.send(command);
@@ -146,14 +152,22 @@ handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNo
         if (!v)
             return callback();
         v.declarations.forEach(function(match) {
+            var pos = calculatePosition(doc, match.offset);
             markers.push({
-                pos: calculatePosition(doc, match.offset),
+                pos: {
+                  sl: pos.row, el: pos.row,
+                  sc: pos.column, ec: pos.column + length
+                },
                 type: 'occurrence_main'
             });
         });    
         v.uses.forEach(function(match) {
+            var pos = calculatePosition(doc, match.offset);
             markers.push({
-                pos: calculatePosition(doc, match.offset),
+                pos: {
+                  sl: pos.row, el: pos.row,
+                  sc: pos.column, ec: pos.column + length
+                },
                 type: 'occurrence_other'
             });
         });
