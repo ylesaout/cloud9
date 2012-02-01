@@ -31,17 +31,25 @@ var calculateOffset = function(doc, cursorPos) {
     return offset;
 };
 
-// TODO implement
 var calculatePosition = function(doc, offset) {
-    return null;
+    var row = 0, column = 0;
+    while (offset > 0) {
+      offset -= doc.getLine(row++).length;
+    }
+    row--;
+    column =  doc.getLine(row).length + offset;
+    return {
+      row: row,
+      column: column
+    };
 };
 
 var saveFileAndDo = function(sender, callback) {
-  var checkSavingDone = function() {
+  var checkSavingDone = function(event) {
     var data = event.data;
-      if (data.command != saveCmd.command) 
+      if (data.command != "save")
         return;
-      sender.removeEventListener("commandComplete", saveFileAndComplete);
+      sender.removeEventListener("commandComplete", checkSavingDone);
       if (! data.success) {
         console.log("Couldn't save the file !!");
         return callback(false);
@@ -64,7 +72,7 @@ handler.complete = function(doc, fullAst, cursorPos, currentNode, callback) {
       if (! savingDone)
         return callback([]);
       // The file has been saved, proceed to code complete request
-      var data = {
+      var command = {
         command : "jvmfeatures",
         subcommand : "complete",
         file : getFilePath(_self.path),
@@ -74,20 +82,40 @@ handler.complete = function(doc, fullAst, cursorPos, currentNode, callback) {
         console.log(message.body);
         callback(message.body.matches);
       });
-      _self.proxy.send(data);
+      _self.proxy.send(command);
     };
 
-    saveFileAndDo(doComplete);
+    saveFileAndDo(this.sender, doComplete);
 };
 
-handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode /*null*/, callback) {
-    var _self = this;
+handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNode /*null*/, callback) {
 
-    var line = doc.getLine(pos.row);
-    var identifier = completeUtil.retrieveFullIdentifier(line, pos.column);
-    console.log("Identifier:" + identifier);
-    var offset = calculateOffset(doc, identifier.start);
-    var data = {
+    // return console.log("onCursorMovedNode called") && callback();
+    console.log("onCursorMovedNode called");
+
+    if (this.inProgress)
+      return;
+    this.inProgress = true;
+
+    var _self = this;
+    var markers = [];
+    var enableRefactorings = [];
+
+    var originalCallback = callback;
+    callback = function() {
+      console.log("callback called");
+      _self.inProgress = false;
+      originalCallback.apply(null, arguments);
+    };
+
+    var line = doc.getLine(cursorPos.row);
+    var identifier = completeUtil.retrieveFullIdentifier(line, cursorPos.column);
+    if (! identifier)
+      return callback();
+    console.log(identifier);
+    var offset = calculateOffset(doc, { row: cursorPos.row, column: identifier.start } );
+    console.log("cursor: " + cursorPos.row + ":" + cursorPos.column + " & offset: " + offset + " & length: " + identifier.text.length);
+    var command = {
       command : "jvmfeatures",
       subcommand : "get_locations",
       file : getFilePath(_self.path),
@@ -101,7 +129,72 @@ handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode 
 
       _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
         console.log(message.body);
-        
+
+        var v = message.body;
+
+        _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
+        // return console.log("variable positions retrieved") && callback();
+        console.log("variable positions retrieved");
+
+        highlightVariable(v);
+        doneHighlighting();
+      });
+      _self.proxy.send(command);
+    };
+
+    function highlightVariable(v) {
+        if (!v)
+            return callback();
+        v.declarations.forEach(function(match) {
+            markers.push({
+                pos: calculatePosition(doc, match.offset),
+                type: 'occurrence_main'
+            });
+        });    
+        v.uses.forEach(function(match) {
+            markers.push({
+                pos: calculatePosition(doc, match.offset),
+                type: 'occurrence_other'
+            });
+        });
+    }
+
+    function doneHighlighting() {
+      if (! _self.isFeatureEnabled("instanceHighlight"))
+        return callback({ enableRefactorings: enableRefactorings });
+
+      callback({
+          markers: markers,
+          enableRefactorings: enableRefactorings
+      });
+    };
+
+    saveFileAndDo(this.sender, doGetVariablePositions);
+};
+
+handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode /*null*/, callback) {
+
+    var _self = this;
+
+    var line = doc.getLine(pos.row);
+    var identifier = completeUtil.retrieveFullIdentifier(line, pos.column);
+    console.log(identifier);
+    var offset = calculateOffset(doc, identifier.start);
+    var command = {
+      command : "jvmfeatures",
+      subcommand : "get_locations",
+      file : getFilePath(_self.path),
+      offset: offset,
+      length: identifier.text.length
+    };
+
+    var doGetVariablePositions = function(savingDone) {
+      if (! savingDone)
+        return callback();
+
+      _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
+        console.log(message.body);
+
         var v = message.body;
         var elementPos = {column: identifier.start, row: pos.row};
         var others = [];
@@ -114,7 +207,7 @@ handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode 
         };
 
         v.declarations.forEach(appendToOthers);
-        v.references.forEach(appendToOthers);
+        v.uses.forEach(appendToOthers);
 
         callback({
             length: identifier.text.length,
@@ -122,10 +215,10 @@ handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode 
             others: others
         });
       });
-      _self.proxy.send(data);
+      _self.proxy.send(command);
     };
 
-    saveFileAndDo(doGetVariablePositions);
+    saveFileAndDo(this.sender, doGetVariablePositions);
 };
 
 handler.outline = function(doc, ast /* null */, callback) {

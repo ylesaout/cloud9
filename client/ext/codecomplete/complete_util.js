@@ -15,20 +15,21 @@ function retrievePreceedingIdentifier(text, pos) {
 
 function retrieveFullIdentifier(text, pos) {
     var buf = [];
-    var start;
-    var i = pos-1;
-    while (i >= 0 && ID_REGEX.test(text[i--]));
-    i++;
-    start = i;
-    for (; i < text.length; i++) {
-        if(ID_REGEX.test(text[i]))
-            buf.push(text[i]);
-        else
-            break;
+    var i = pos >= text.length ? (text.length - 1) : pos;
+    while (i < text.length && ID_REGEX.test(text[i]))
+        i++;
+    // e.g edge semicolon check
+    i = pos == text.length ? i : i-1;
+    for (; i >= 0 && ID_REGEX.test(text[i]); i--) {
+        buf.push(text[i]);
     }
+    i++;
+    var text = buf.reverse().join("");
+    if (text.length == 0)
+        return null;
     return {
-        start: start,
-        text: buf.join("")
+        start: i,
+        text: text
     };
 }
 
@@ -63,6 +64,7 @@ function findCompletions(prefix, allIdentifiers) {
 }
 
 exports.retrievePreceedingIdentifier = retrievePreceedingIdentifier;
+exports.retrieveFullIdentifier = retrieveFullIdentifier;
 exports.findCompletions = findCompletions;
 
 });

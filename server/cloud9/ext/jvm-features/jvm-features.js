@@ -65,7 +65,7 @@ sys.inherits(JVMFeatures, Plugin);
                     var absFilePath = Path.join(_self.basePath, message.file);
                     console.log("file: " + absFilePath + ":" + message.offset + " & matches: " + matches);
                     _self.sendResult(0, cmd + ":" + subCmd, {
-                      references: matches.filter(function(match) {
+                      uses: matches.filter(function(match) {
                           return match.type == "reference";
                         }),
                       declarations: matches.filter(function(match) {
