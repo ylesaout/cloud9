@@ -206,6 +206,8 @@ function asyncParForEach(array, fn, callback) {
                     next();
                 }
             }
+            else
+                next();
         }, function() {
             callback(_self.cachedAst);
         });
@@ -248,6 +250,8 @@ function asyncParForEach(array, fn, callback) {
                         next();
                     });
                 }
+                else
+                    next();
             }, function() {
                 var extendedMakers = markers;
                 filterMarkersAroundError(ast, markers);
@@ -341,6 +345,7 @@ function asyncParForEach(array, fn, callback) {
                 else
                     next();
             }, function() {
+                console.log("Got here");
                 if (aggregateActions.hint && !hintMessage) {
                     hintMessage = aggregateActions.hint;
                 }
@@ -400,6 +405,8 @@ function asyncParForEach(array, fn, callback) {
                         next();
                     });
                 }
+                else
+                    next();
             }, function() {
             });
         }
@@ -494,7 +501,6 @@ function asyncParForEach(array, fn, callback) {
         }, function() {
             var matches = [];
             
-            console.log("Results to get: " + _self.handlers.length);
             asyncForEach(_self.handlers, function(handler, next) {
                 if (handler.handlesLanguage(_self.$language)) {
                     handler.complete(_self.doc, ast, pos, currentNode, function(completions) {
@@ -507,8 +513,6 @@ function asyncParForEach(array, fn, callback) {
                 else
                     next();
             }, function() {
-                console.log("Matches:");
-                console.log(matches);
                 removeDuplicateMatches(matches);
                 // Sort by priority, score
                 matches.sort(function(a, b) {
