@@ -128,6 +128,10 @@ module.exports = {
      */
     getVariablePositions: function(doc, fullAst, pos, currentNode, callback) {
         callback();
+    },
+
+    finishRefactoring: function(doc, oldId, newName, callback) {
+        callback();
     }
 };
 

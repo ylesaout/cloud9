@@ -73,7 +73,7 @@ var ServerProxy = function(sender) {
       channel += (":" + msg.subtype);
     console.log("publish to: " + channel);
     this.emitter.emit(channel, msg);
-  }
+  };
 };
 
 var LanguageWorker = exports.LanguageWorker = function(sender) {
@@ -111,6 +111,9 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
     sender.on("fetchVariablePositions", function(event) {
         console.log("fetch called");
         _self.sendVariablePositions(event);
+    });
+    sender.on("finishRefactoring", function(event) {
+        _self.finishRefactoring(event);
     });
     sender.on("serverProxy", function(event) {
         _self.serverProxy.onMessage(event.data);
@@ -322,7 +325,7 @@ function asyncParForEach(array, fn, callback) {
         var hintMessage = ""; // this.checkForMarker(pos) || "";
         // Not going to parse for this, only if already parsed successfully
         var aggregateActions = {markers: [], hint: null, enableRefactorings: []};
-        
+
         function cursorMoved() {
             asyncForEach(_self.handlers, function(handler, next) {
                 if (handler.handlesLanguage(_self.$language)) {
@@ -345,7 +348,6 @@ function asyncParForEach(array, fn, callback) {
                 else
                     next();
             }, function() {
-                console.log("Got here");
                 if (aggregateActions.hint && !hintMessage) {
                     hintMessage = aggregateActions.hint;
                 }
@@ -394,22 +396,47 @@ function asyncParForEach(array, fn, callback) {
         var pos = event.data;
         var _self = this;
         // Not going to parse for this, only if already parsed successfully
-        if (this.cachedAst) {
-            var ast = this.cachedAst;
-            var currentNode = ast.findNode({line: pos.row, col: pos.column});
-            asyncForEach(this.handlers, function(handler, next) {
-                if (handler.handlesLanguage(_self.$language)) {
-                    handler.getVariablePositions(_self.doc, ast, pos, currentNode, function(response) {
-                        if (response)
-                            _self.sender.emit("variableLocations", response);
-                        next();
-                    });
-                }
-                else
+        var ast = this.cachedAst;
+        var currentNode = ast && ast.findNode({line: pos.row, col: pos.column});
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.getVariablePositions(_self.doc, ast, pos, currentNode, function(response) {
+                    if (response)
+                        _self.sender.emit("variableLocations", response);
                     next();
-            }, function() {
-            });
-        }
+                });
+            }
+            else
+                next();
+        }, function() {
+        });
+    };
+
+    this.finishRefactoring = function(event) {
+        var _self = this;
+        var data = event.data;
+
+        var oldId = data.oldId;
+        var newName = data.newName;
+
+        var handled = false;
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.finishRefactoring(_self.doc, oldId, newName, function(response) {
+                    if (response) {
+                        handled = true;
+                        console.log("Refactor result retrieved");
+                        _self.sender.emit("refactorResult", response);
+                    }
+                    next();
+                });
+            }
+            else
+                next();
+        }, function() {
+            if (! handled)
+                _self.sender.emit("refactorResult", {success: true});
+        });
     };
 
     this.onUpdate = function() {

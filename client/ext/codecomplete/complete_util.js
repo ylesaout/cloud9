@@ -28,7 +28,7 @@ function retrieveFullIdentifier(text, pos) {
     if (text.length == 0)
         return null;
     return {
-        start: i,
+        sc: i,
         text: text
     };
 }

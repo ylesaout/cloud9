@@ -94,11 +94,10 @@ handler.complete = function(doc, fullAst, cursorPos, currentNode, callback) {
 
 handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNode /*null*/, callback) {
 
-    // return console.log("onCursorMovedNode called") && callback();
     console.log("onCursorMovedNode called");
 
-    if (this.inProgress)
-      return;
+    if (this.inProgress || this.refactorInProgress)
+      return callback();
     this.inProgress = true;
 
     var _self = this;
@@ -107,7 +106,7 @@ handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNo
 
     var originalCallback = callback;
     callback = function() {
-      console.log("callback called");
+      console.log("onCursorMove callback called");
       _self.inProgress = false;
       originalCallback.apply(null, arguments);
     };
@@ -116,8 +115,8 @@ handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNo
     var identifier = completeUtil.retrieveFullIdentifier(line, cursorPos.column);
     if (! identifier)
       return callback();
-    console.log(identifier);
-    var offset = calculateOffset(doc, { row: cursorPos.row, column: identifier.start } );
+
+    var offset = calculateOffset(doc, { row: cursorPos.row, column: identifier.sc } );
     var length = identifier.text.length;
     console.log("cursor: " + cursorPos.row + ":" + cursorPos.column + " & offset: " + offset + " & length: " + identifier.text.length);
     var command = {
@@ -133,13 +132,12 @@ handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNo
         return callback();
 
       _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
-        console.log(message.body);
+        // console.log(message.body);
 
         var v = message.body;
 
         _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
-        // return console.log("variable positions retrieved") && callback();
-        console.log("variable positions retrieved");
+        // console.log("variable positions retrieved");
 
         highlightVariable(v);
         enableRefactorings.push("renameVariable");
@@ -160,7 +158,7 @@ handler.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNo
                 },
                 type: 'occurrence_main'
             });
-        });    
+        });
         v.uses.forEach(function(match) {
             var pos = calculatePosition(doc, match.offset);
             markers.push({
@@ -192,8 +190,7 @@ handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode 
 
     var line = doc.getLine(pos.row);
     var identifier = completeUtil.retrieveFullIdentifier(line, pos.column);
-    console.log(identifier);
-    var offset = calculateOffset(doc, identifier.start);
+    var offset = calculateOffset(doc, { row: pos.row, column: identifier.sc } );
     var command = {
       command : "jvmfeatures",
       subcommand : "get_locations",
@@ -207,10 +204,11 @@ handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode 
         return callback();
 
       _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
-        console.log(message.body);
+
+        _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
 
         var v = message.body;
-        var elementPos = {column: identifier.start, row: pos.row};
+        var elementPos = {column: identifier.sc, row: pos.row};
         var others = [];
 
         var appendToOthers = function(match) {
@@ -235,21 +233,40 @@ handler.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode 
     saveFileAndDo(this.sender, doGetVariablePositions);
 };
 
+handler.finishRefactoring = function(doc, oldId, newName, callback) {
+    var _self = this;
+    this.refactorInProgress = true;
+
+    var offset = calculateOffset(doc, oldId);
+
+    var command = {
+      command : "jvmfeatures",
+      subcommand : "refactor",
+      file : getFilePath(_self.path),
+      offset: offset,
+      newname: newName,
+      length: oldId.text.length
+    };
+
+    console.log("finishRefactoring called");
+
+    this.proxy.once("result", "jvmfeatures:refactor", function(message) {
+      _self.refactorInProgress = false;
+      callback(message.body);
+    });
+    this.proxy.send(command);
+}
+
 handler.outline = function(doc, ast /* null */, callback) {
     callback();
 };
 
-/* TODO maybe used to free some user's instance memory
-handler.onDocumentOpen = function(path, doc, oldPath, callback) {
-    callback();
-};
-handler.onDocumentClose = function(path, callback) {
-    callback();
-};
-*/
-
 handler.analysisRequiresParsing = function() {
-    return true;
+    return false;
+};
+
+handler.analyze = function(doc, fullAst /* null */, callback) {
+    callback();
 };
 
 });

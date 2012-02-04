@@ -77,6 +77,17 @@ sys.inherits(JVMFeatures, Plugin);
                     }
                 });
               break;
+
+            // Do refactoring
+            case "refactor":
+                this.eclipseClient.refactor("sossa1", message.file, message.newname, message.offset, message.length,
+                  function(data) {
+                    _self.sendResult(0, cmd + ":" + subCmd, {
+                      success: data.success,
+                      message: data.body
+                    });
+                });
+              break;
             case "outline":
                 break;
             default:
@@ -85,7 +96,7 @@ sys.inherits(JVMFeatures, Plugin);
         }
         return res;
     };
-    
+
     this.$error = function(message, code, data) {
         this.ide.broadcast(JSON.stringify({
             "type": "error",
@@ -94,7 +105,7 @@ sys.inherits(JVMFeatures, Plugin);
             "data": data || ""
         }), this.name);
     };
-    
+
     this.connect = function(user, client) {
         var _self = this;
 
@@ -113,7 +124,7 @@ sys.inherits(JVMFeatures, Plugin);
         });
         return true;
     };
-    
+
     this.disconnect = function(user, client) {
         if (this.eclipseClient) {
           this.eclipseClient.disconnect();
@@ -122,10 +133,10 @@ sys.inherits(JVMFeatures, Plugin);
         }
         return true;
     };
-    
+
     this.dispose = function(callback) {
         // TODO kill all eclipse instances
         callback();
     };
-    
+
 }).call(JVMFeatures.prototype);
