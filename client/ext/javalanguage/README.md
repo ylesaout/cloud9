@@ -1,6 +1,7 @@
 # Cloud9 IDE Java Language Features
 
 ## TODOs
+
 * EclipseClient protocol exhaustive testing
 * General: Substitute the user's workspace in the EclipseClient creation
 * General: Extract project name from the workspace
@@ -13,6 +14,7 @@
 * Refactor: pressing enter key should also do the refactoring and pressing escape should cancel the refactoring
 * Refactor: changed files must be noted !! --> maybe need a tree reload action
 
-Major Tasks
+## Major Tasks
+
 * Outline
 * processor.analyze -> build and get error markers
