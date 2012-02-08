@@ -16,15 +16,17 @@ var getFilePath = function(filePath) {
     if (filePath.indexOf("/workspace/") === 0)
         filePath = filePath.substr(11);
     return filePath;
-}
+};
 
 var calculateOffset = function(doc, cursorPos) {
-    var offset = 0;
+    if (offset == 0)
+        return {row: 0, column: 0};
+    var offset = 0, newLineLength = doc.getNewLineCharacter().length;
     var prevLines = doc.getLines(0, cursorPos.row - 1);
 
     for (var i=0; i < prevLines.length; i++) {
       offset += prevLines[i].length;
-      offset += 1;
+      offset += newLineLength;
     }
     offset += cursorPos.column;
 
@@ -32,14 +34,14 @@ var calculateOffset = function(doc, cursorPos) {
 };
 
 var calculatePosition = function(doc, offset) {
-    var row = 0, column;
+    var row = 0, column, newLineLength = doc.getNewLineCharacter().length;;
     while (offset > 0) {
       offset -= doc.getLine(row++).length;
-      offset--; // consider the new line character(s)
+      offset -= newLineLength; // consider the new line character(s)
     }
     row--;
     if (offset < 0) {
-      offset++; // add the new line again
+      offset += newLineLength; // add the new line again
     }
     column = doc.getLine(row).length + offset;
     return {
@@ -71,17 +73,18 @@ handler.handlesLanguage = function(language) {
 
 handler.complete = function(doc, fullAst, cursorPos, currentNode, callback) {
     var _self = this;
-    
     var doComplete = function(savingDone) {
       if (! savingDone)
         return callback([]);
       // The file has been saved, proceed to code complete request
+      var offset = calculateOffset(doc, cursorPos);
       var command = {
         command : "jvmfeatures",
         subcommand : "complete",
         file : getFilePath(_self.path),
-        offset: calculateOffset(doc, cursorPos)
+        offset: offset
       };
+      console.log("offset = " + offset);
       _self.proxy.once("result", "jvmfeatures:complete", function(message) {
         console.log(message.body);
         callback(message.body.matches);

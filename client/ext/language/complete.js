@@ -25,6 +25,25 @@ var deferredInvoke = lang.deferredCall(function() {
         module.exports.closeCompletionBox();
 });
 
+var calculatePosition = function(doc, offset) {
+    if (offset == 0)
+        return {row: 0, column: 0};
+    var row = 0, column, newLineLength = doc.getNewLineCharacter().length;;
+    while (offset > 0) {
+      offset -= doc.getLine(row++).length;
+      offset -= newLineLength; // consider the new line character(s)
+    }
+    row--;
+    if (offset < 0) {
+      offset += newLineLength; // add the new line again
+    }
+    column = doc.getLine(row).length + offset;
+    return {
+      row: row,
+      column: column
+    };
+};
+
 function retrievePreceedingIdentifier(text, pos) {
     var buf = [];
     for(var i = pos-1; i >= 0; i--) {
@@ -69,6 +88,18 @@ function replaceText(editor, prefix, newText) {
     doc.removeInLine(pos.row, pos.column - prefix.length, pos.column);
     doc.insert({row: pos.row, column: pos.column - prefix.length}, paddedLines);
     editor.moveCursorTo(pos.row + rowOffset, pos.column + colOffset - prefix.length);
+}
+
+function applyDeltas(editor, deltas) {
+    var doc = editor.getSession().getDocument();
+    var nlChar = doc.getNewLineCharacter();
+    for (var i = 0; i < deltas.length; i++) {
+        var delta = deltas[i];
+        if (delta.type == "+") {
+            delta.text = delta.text.replace(/\r\n|\n|\r/g, nlChar);
+            doc.insert(calculatePosition(doc, delta.offset), delta.text);
+        }
+    }
 }
 
 module.exports = {
@@ -157,7 +188,7 @@ module.exports = {
             var html = "";
             if(match.icon)
                 html = "<img src='/static/ext/language/img/" + match.icon + ".png'/>";
-            html += "<span class='main'><u>" + _self.prefix + "</u>" + match.name.substring(_self.prefix.length);
+            html += "<span class='main'><u>" + match.name.substring(0, _self.prefix.length) + "</u>" + match.name.substring(_self.prefix.length);
             if(match.meta) {
                 html += '<span class="meta">' + match.meta + '</span>';
             }
@@ -166,6 +197,7 @@ module.exports = {
             matchEl.addEventListener("click", function() {
                 var editor = editors.currentEditor.ceEditor.$editor;
                 replaceText(editor, _self.prefix, match.replaceText);
+                match.deltas && applyDeltas(editor, match.deltas);
                 editor.focus();
             });
             matchEl.style.height = cursorConfig.lineHeight + "px";
@@ -224,7 +256,9 @@ module.exports = {
                 break;
             case 13: // Enter
                 var editor = editors.currentEditor.ceEditor.$editor;
-                replaceText(editor, this.prefix, this.matches[this.selectedIdx].replaceText);
+                var match = this.matches[this.selectedIdx];
+                replaceText(editor, this.prefix, match.replaceText);
+                match.deltas && applyDeltas(editor, match.deltas);
                 this.closeCompletionBox();
                 e.preventDefault();
                 break;
@@ -313,7 +347,9 @@ module.exports = {
         }
         
         if (matches.length === 1 && !this.forceBox) {
-            replaceText(editor, identifier, matches[0].replaceText);
+            var match = matches[0];
+            replaceText(editor, identifier, match.replaceText);
+            match.deltas && applyDeltas(editor, match.deltas);
         }
         else if (matches.length > 0) {
             // identifier may not match the java package abbreviation

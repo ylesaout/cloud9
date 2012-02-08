@@ -119,6 +119,8 @@ sys.inherits(JVMFeatures, Plugin);
             eclipseClient.on("lifecycle:connected", function() {
               console.log("Eclipse session initalied");
               _self.eclipseClient = eclipseClient;
+              eclipseClient.on("output", console.log);
+              eclipseClient.on("err", console.error);
             });
             eclipseClient.initEclipseSession();
         });
