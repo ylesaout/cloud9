@@ -19,8 +19,6 @@ var getFilePath = function(filePath) {
 };
 
 var calculateOffset = function(doc, cursorPos) {
-    if (offset == 0)
-        return {row: 0, column: 0};
     var offset = 0, newLineLength = doc.getNewLineCharacter().length;
     var prevLines = doc.getLines(0, cursorPos.row - 1);
 
@@ -34,6 +32,8 @@ var calculateOffset = function(doc, cursorPos) {
 };
 
 var calculatePosition = function(doc, offset) {
+    if (offset == 0)
+        return {row: 0, column: 0};
     var row = 0, column, newLineLength = doc.getNewLineCharacter().length;;
     while (offset > 0) {
       offset -= doc.getLine(row++).length;
