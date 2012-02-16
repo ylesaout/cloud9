@@ -86,9 +86,12 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
     
     Mirror.call(this, sender);
     this.setTimeout(500);
-    
-    sender.on("complete", function(pos) {
-        _self.complete(pos);
+
+    sender.on("outline", function(event) {
+        _self.outline();
+    });
+    sender.on("complete", function(event) {
+        _self.complete(event);
     });
     sender.on("documentClose", function(event) {
         _self.documentClose(event);
@@ -213,6 +216,23 @@ function asyncParForEach(array, fn, callback) {
                 next();
         }, function() {
             callback(_self.cachedAst);
+        });
+    };
+
+    this.outline = function() {
+        var _self = this;
+        var ast = this.parse(function() {
+            asyncForEach(_self.handlers, function(handler, next) {
+                if (handler.handlesLanguage(_self.$language)) {
+                    handler.outline(_self.doc, ast, function(outline) {
+                        if(outline)
+                            return _self.sender.emit("outline", outline);
+                    });
+                }
+                else
+                    next();
+            }, function() {
+            });
         });
     };
 

@@ -54,7 +54,7 @@ sys.inherits(JVMFeatures, Plugin);
                     }
                 });
               break;
-            
+
             // get locations of a variable or funcion call in the same file
             case "get_locations":
                 this.eclipseClient.getLocations("sossa1", message.file, message.offset, message.length,
@@ -82,13 +82,22 @@ sys.inherits(JVMFeatures, Plugin);
             case "refactor":
                 this.eclipseClient.refactor("sossa1", message.file, message.newname, message.offset, message.length,
                   function(data) {
+                    if (! data.success)
+                      return _self.$error("Could not execute refactor request", 5);
                     _self.sendResult(0, cmd + ":" + subCmd, {
                       success: data.success,
                       message: data.body
                     });
                 });
               break;
+
             case "outline":
+                this.eclipseClient.outline("sossa1", message.file,
+                  function(data) {
+                    if (! data.success)
+                      return _self.$error("Could not execute outline request", 6);
+                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
+                });
                 break;
             default:
                 res = false;
@@ -119,9 +128,9 @@ sys.inherits(JVMFeatures, Plugin);
             eclipseClient.on("lifecycle:connected", function() {
               console.log("Eclipse session initalied");
               _self.eclipseClient = eclipseClient;
-              eclipseClient.on("output", console.log);
-              eclipseClient.on("err", console.error);
             });
+            eclipseClient.on("output", console.log);
+            eclipseClient.on("err", console.error);
             eclipseClient.initEclipseSession();
         });
         return true;
