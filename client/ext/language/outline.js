@@ -30,7 +30,10 @@ module.exports = {
         var xmlS = '';
         for (var i = 0; i < array.length; i++) {
             var elem = array[i];
-            xmlS += '<entry name="' + elem.name + '" icon="' + elem.icon + '" sl="' + elem.pos.sl + '" el="' + elem.pos.el + '"' + (elem === selected ? ' selected="true"' : '') + '>\n';
+            xmlS += '<entry name="' + elem.name + '" icon="' + elem.icon
+                + '" sl="' + elem.pos.sl + '" el="' + elem.pos.el
+                + '" sc="' + elem.pos.sc + '" ec="' + elem.pos.ec
+                + '"' + (elem === selected ? ' selected="true"' : '') + '>\n';
             xmlS += this.outlineJsonToXml(elem.items, selected);
             xmlS += '</entry>';
         }
@@ -89,7 +92,8 @@ module.exports = {
     jumpTo: function(el) {
         setTimeout(function() {
             var editor = editors.currentEditor.ceEditor.$editor;
-            var range = new Range(+el.getAttribute("sl"), 0, +el.getAttribute("el"), Infinity);
+            var range = new Range(+el.getAttribute("sl"), +el.getAttribute("sc"),
+                +el.getAttribute("el"), +el.getAttribute("ec"));
             editor.selection.setSelectionRange(range);
             editor.centerSelection();
         });

@@ -50,8 +50,8 @@
                         <a:caption><?lm
                             [@name]
                         ?>
-                        <a:icon value="/static/ext/language/img/[@icon].png" />
                         </a:caption>
+                        <a:icon value="/static/ext/language/img/[@icon].png" />
                     </a:each>
                 </a:tree>
                 <a:scrollbar

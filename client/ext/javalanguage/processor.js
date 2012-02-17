@@ -52,7 +52,7 @@ var calculatePosition = function(doc, offset) {
 var convertToOutlineTree = function(doc, root) {
   var items = root.items, newItems = [];
   var start = calculatePosition(doc, root.offset);
-  var end = calculatePosition(doc, root.offset + root.length - (root.length > 0 ? 1 : 0));
+  var end = calculatePosition(doc, root.offset + root.length);
   var newRoot = {
     icon: root.type,
     name: root.name,
