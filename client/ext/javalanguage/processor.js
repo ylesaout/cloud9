@@ -31,18 +31,18 @@ var calculateOffset = function(doc, cursorPos) {
 };
 
 var calculatePosition = function(doc, offset) {
-    if (offset == 0)
-        return {row: 0, column: 0};
     var row = 0, column, newLineLength = doc.getNewLineCharacter().length;;
     while (offset > 0) {
       offset -= doc.getLine(row++).length;
       offset -= newLineLength; // consider the new line character(s)
     }
-    row--;
     if (offset < 0) {
+      row--;
       offset += newLineLength; // add the new line again
+      column = doc.getLine(row).length + offset;
+    } else {
+      column = 0;
     }
-    column = doc.getLine(row).length + offset;
     return {
       row: row,
       column: column
@@ -52,7 +52,7 @@ var calculatePosition = function(doc, offset) {
 var convertToOutlineTree = function(doc, root) {
   var items = root.items, newItems = [];
   var start = calculatePosition(doc, root.offset);
-  var end = calculatePosition(doc, root.offset + root.length);
+  var end = calculatePosition(doc, root.offset + root.length - (root.length > 0 ? 1 : 0));
   var newRoot = {
     type: root.type,
     name: root.name,
