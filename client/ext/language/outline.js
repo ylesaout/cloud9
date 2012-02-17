@@ -30,7 +30,7 @@ module.exports = {
         var xmlS = '';
         for (var i = 0; i < array.length; i++) {
             var elem = array[i];
-            xmlS += '<entry name="' + elem.name + '" sl="' + elem.pos.sl + '" el="' + elem.pos.el + '"' + (elem === selected ? ' selected="true"' : '') + '>\n';
+            xmlS += '<entry name="' + elem.name + '" icon="' + elem.icon + '" sl="' + elem.pos.sl + '" el="' + elem.pos.el + '"' + (elem === selected ? ' selected="true"' : '') + '>\n';
             xmlS += this.outlineJsonToXml(elem.items, selected);
             xmlS += '</entry>';
         }
