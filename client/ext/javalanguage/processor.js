@@ -57,6 +57,7 @@ var convertToOutlineTree = function(doc, root) {
     icon: root.type,
     name: root.name,
     items: newItems,
+    meta: root.meta,
     pos: {
       sl: start.row,
       sc: start.column,

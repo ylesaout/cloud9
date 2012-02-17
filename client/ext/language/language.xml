@@ -47,9 +47,8 @@
                       filter        = "{tbOutlineSearch.value}"
                       filter-fields = "@name"
                     >
-                        <a:caption><?lm
-                            [@name]
-                        ?>
+                        <a:caption>
+                          <?lm [@name]{!![@meta] ? "<span style='top:0px; left:0px; position:inherit; color:gray;'> : [@meta]</span>" : ""} ?>
                         </a:caption>
                         <a:icon value="/static/ext/language/img/[@icon].png" />
                     </a:each>

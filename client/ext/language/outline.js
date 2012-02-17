@@ -32,8 +32,10 @@ module.exports = {
             var elem = array[i];
             xmlS += '<entry name="' + elem.name + '" icon="' + elem.icon
                 + '" sl="' + elem.pos.sl + '" el="' + elem.pos.el
-                + '" sc="' + elem.pos.sc + '" ec="' + elem.pos.ec
-                + '"' + (elem === selected ? ' selected="true"' : '') + '>\n';
+                + '" sc="' + elem.pos.sc + '" ec="' + elem.pos.ec;
+            if (elem.meta)
+                xmlS += '" meta="' + elem.meta;
+            xmlS += '"' + (elem === selected ? ' selected="true"' : '') + '>\n';
             xmlS += this.outlineJsonToXml(elem.items, selected);
             xmlS += '</entry>';
         }
