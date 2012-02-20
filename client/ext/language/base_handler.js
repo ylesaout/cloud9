@@ -132,6 +132,10 @@ module.exports = {
 
     finishRefactoring: function(doc, oldId, newName, callback) {
         callback();
+    },
+
+    codeFormat: function(doc, callback) {
+        callback();
     }
 };
 

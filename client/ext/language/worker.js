@@ -90,6 +90,9 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
     sender.on("outline", function(event) {
         _self.outline();
     });
+    sender.on("code_format", function(event) {
+        _self.codeFormat();
+    });
     sender.on("complete", function(event) {
         _self.complete(event);
     });
@@ -233,6 +236,22 @@ function asyncParForEach(array, fn, callback) {
                     next();
             }, function() {
             });
+        });
+    };
+
+    this.codeFormat = function() {
+        console.log("worker codeFormat called");
+        var _self = this;
+        asyncForEach(_self.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.codeFormat(_self.doc, function(newSource) {
+                    if(newSource)
+                        return _self.sender.emit("code_format", newSource);
+                });
+            }
+            else
+                next();
+        }, function() {
         });
     };
 

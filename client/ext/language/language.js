@@ -17,6 +17,7 @@ var complete = require('ext/language/complete');
 var marker = require('ext/language/marker');
 var refactor = require('ext/language/refactor');
 var outline = require('ext/language/outline');
+var format = require('ext/language/format');
 var liveInspect = require('ext/language/liveinspect');
 
 var markup = require("text!ext/language/language.xml");
@@ -83,6 +84,7 @@ module.exports = ext.register("ext/language/language", {
         complete.hook(8, worker);
         refactor.hook(this, worker);
         outline.hook(this, worker);
+        format.hook(this, worker);
         
         ide.dispatchEvent("language.worker", {worker: worker});
         ide.addEventListener("$event.language.worker", function(callback){

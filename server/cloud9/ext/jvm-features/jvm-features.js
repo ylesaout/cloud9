@@ -99,6 +99,15 @@ sys.inherits(JVMFeatures, Plugin);
                     _self.sendResult(0, cmd + ":" + subCmd, data.body);
                 });
                 break;
+
+            case "code_format":
+                this.eclipseClient.codeFormat("sossa1", message.file,
+                  function(data) {
+                    if (! data.success)
+                      return _self.$error("Could not execute format request", 7);
+                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
+                });
+                break;
             default:
                 res = false;
                 break;

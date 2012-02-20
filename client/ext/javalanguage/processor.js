@@ -313,6 +313,27 @@ var saveFileAndDo = function(sender, callback) {
         callback();
     };
 
+    this.codeFormat = function(doc, callback) {
+        var _self = this;
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "code_format",
+          file : getFilePath(_self.path)
+        };
+
+        console.log("code_format called");
+
+        var doGetNewSource = function() {
+          _self.proxy.once("result", "jvmfeatures:code_format", function(message) {
+            console.log(message.body);
+            callback(message.body);
+          });
+          _self.proxy.send(command);
+        };
+
+        saveFileAndDo(this.sender, doGetNewSource);
+    };
+
 }).call(handler);
 
 });
