@@ -30,13 +30,12 @@ sys.inherits(JVMFeatures, Plugin);
             return false;
 
         var _self = this;
-        
+        var subCmd = (message.subcommand || "").toLowerCase();
 
         if (! this.eclipseClient)
-          return this.$error("No eclipse session running!", 3);
+          return this.$error("No eclipse session running! " + cmd+":"+subCmd+":"+message.file, 3);
 
-        var subCmd = (message.subcommand || "").toLowerCase(),
-            res = true;
+        var res = true;
         switch (subCmd) {
             case "complete":
                 this.eclipseClient.codeComplete("sossa1", message.file, message.offset,
@@ -63,7 +62,6 @@ sys.inherits(JVMFeatures, Plugin);
                       return _self.$error("Could not execute get_locations request", 4);
                     var matches = data.body;
                     var absFilePath = Path.join(_self.basePath, message.file);
-                    console.log("file: " + absFilePath + ":" + message.offset + " & matches: " + matches);
                     _self.sendResult(0, cmd + ":" + subCmd, {
                       uses: matches.filter(function(match) {
                           return match.type == "reference";
@@ -105,6 +103,15 @@ sys.inherits(JVMFeatures, Plugin);
                   function(data) {
                     if (! data.success)
                       return _self.$error("Could not execute format request", 7);
+                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
+                });
+                break;
+
+            case "analyze_file":
+              this.eclipseClient.analyzeFile("sossa1", message.file,
+                  function(data) {
+                    if (! data.success)
+                      return _self.$error("Could not execute analyze request", 7);
                     _self.sendResult(0, cmd + ":" + subCmd, data.body);
                 });
                 break;

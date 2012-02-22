@@ -310,7 +310,40 @@ var saveFileAndDo = function(sender, callback) {
     };
 
     this.analyze = function(doc, fullAst /* null */, callback) {
-        callback();
+        var _self = this;
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "analyze_file",
+          file : getFilePath(_self.path)
+        };
+
+        console.log("analyze_file called");
+
+        var doAnalyzeFile = function() {
+          _self.proxy.once("result", "jvmfeatures:analyze_file", function(message) {
+            console.log("analyze_result");
+            console.log(message.body);
+
+            callback(message.body.map(function(marker) {
+              var start = calculatePosition(doc, marker.offset);
+              var end = calculatePosition(doc, marker.offset + marker.length);
+              return {
+                pos: {
+                  sl: start.row,
+                  sc: start.column,
+                  el: end.row,
+                  ec: end.column
+                },
+                level: marker.level,
+                type: marker.type,
+                message: marker.message
+              };
+            }));
+          });
+          _self.proxy.send(command);
+        };
+
+        saveFileAndDo(this.sender, doAnalyzeFile);
     };
 
     this.codeFormat = function(doc, callback) {

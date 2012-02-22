@@ -43,8 +43,9 @@
                   flex            = "1"
                   anchors = "0 0 0 0">
                     <a:each
-                      match         = "[entry]"
+                      match         = "[entries|entry]"
                       filter        = "{tbOutlineSearch.value}"
+                      filter-groups = "entries"
                       filter-fields = "@name"
                     >
                         <a:caption>

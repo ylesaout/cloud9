@@ -224,7 +224,7 @@ function asyncParForEach(array, fn, callback) {
 
     this.outline = function() {
         var _self = this;
-        var ast = this.parse(function() {
+        this.parse(function(ast) {
             asyncForEach(_self.handlers, function(handler, next) {
                 if (handler.handlesLanguage(_self.$language)) {
                     handler.outline(_self.doc, ast, function(outline) {

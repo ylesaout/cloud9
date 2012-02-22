@@ -26,20 +26,23 @@ module.exports = {
         ext.nodes.push(node);
     },
 
-    outlineJsonToXml: function(array, selected) {
-        var xmlS = '';
+    outlineJsonToXml: function(array, selected, tag) {
+        var xmlS = [];
         for (var i = 0; i < array.length; i++) {
             var elem = array[i];
-            xmlS += '<entry name="' + elem.name + '" icon="' + elem.icon
-                + '" sl="' + elem.pos.sl + '" el="' + elem.pos.el
-                + '" sc="' + elem.pos.sc + '" ec="' + elem.pos.ec;
-            if (elem.meta)
-                xmlS += '" meta="' + elem.meta;
-            xmlS += '"' + (elem === selected ? ' selected="true"' : '') + '>\n';
-            xmlS += this.outlineJsonToXml(elem.items, selected);
-            xmlS += '</entry>';
+            xmlS.push('<'); xmlS.push(tag); xmlS.push(' name="'); xmlS.push(elem.name);
+                xmlS.push('" icon="' + elem.icon);
+                xmlS.push('" sl="'); xmlS.push(elem.pos.sl);
+                xmlS.push('" el="'); xmlS.push(elem.pos.el);
+                xmlS.push('" sc="'); xmlS.push(elem.pos.sc)
+                xmlS.push('" ec="'); xmlS.push(elem.pos.ec);
+            elem.meta && xmlS.push('" meta="') && xmlS.push(elem.meta);
+                elem === selected && xmlS.push('" selected="true');
+                xmlS.push('">\n');
+            xmlS = xmlS.concat(this.outlineJsonToXml(elem.items, selected, 'entry'));
+                xmlS.push('</'); xmlS.push(tag); xmlS.push('>');
         }
-        return xmlS;
+        return xmlS.join('');
     },
 
     findCursorInOutline: function(json, cursor) {
@@ -60,7 +63,7 @@ module.exports = {
         
         barOutline.setAttribute('visible', true);
         var selected = this.findCursorInOutline(outline, ace.getCursorPosition());
-        mdlOutline.load(apf.getXml('<data>' + this.outlineJsonToXml(outline.items, selected) + '</data>'));
+        mdlOutline.load(apf.getXml('<data>' + this.outlineJsonToXml(outline.items, selected, 'entries') + '</data>'));
         
         var node = mdlOutline.queryNode("//entry[@selected]");
         if(node) {
