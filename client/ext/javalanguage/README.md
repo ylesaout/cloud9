@@ -4,7 +4,6 @@
 
 * EclipseClient protocol exhaustive testing
 * General: Substitute the user's workspace in the EclipseClient creation
-* General: Extract project name from the workspace
 * Refactor: Adjust placeholder to take (positions + lengths and where to adjust) to be able to mark imports
 * Variable locations : the constructor is marked as a use --> not declaration
 * Refactor: pressing enter key should also do the refactoring and pressing escape should cancel the refactoring

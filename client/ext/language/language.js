@@ -69,7 +69,7 @@ module.exports = ext.register("ext/language/language", {
             ext.initExtension(_self);
             var path = event.node.getAttribute("path");
             var editor = editors.currentEditor.ceEditor.$editor;
-            worker.call("switchFile", [path, editor.syntax, event.doc.getValue()]);
+            worker.call("switchFile", [path, editor.syntax, event.doc.getValue(), window.cloud9config.projectName]);
             event.doc.addEventListener("close", function() {
                 worker.emit("documentClose", {data: path});
             });
@@ -200,7 +200,7 @@ module.exports = ext.register("ext/language/language", {
         if(!editors.currentEditor.ceEditor || !tabEditors.getPage())
             return;
         var currentPath = tabEditors.getPage().getAttribute("id");
-        this.worker.call("switchFile", [currentPath, editors.currentEditor.ceEditor.syntax, this.editor.getSession().getValue(), this.editor.getCursorPosition()]);
+        this.worker.call("switchFile", [currentPath, editors.currentEditor.ceEditor.syntax, this.editor.getSession().getValue(), window.cloud9config.projectName]);
     },
     
     onEditorClick: function(event) {

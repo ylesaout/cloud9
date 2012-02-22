@@ -38,7 +38,7 @@ sys.inherits(JVMFeatures, Plugin);
         var res = true;
         switch (subCmd) {
             case "complete":
-                this.eclipseClient.codeComplete("sossa1", message.file, message.offset,
+                this.eclipseClient.codeComplete(message.project, message.file, message.offset,
                   function(data) {
                     if (! data.success)
                       return _self.$error("Could not execute complete request", 2);
@@ -56,12 +56,11 @@ sys.inherits(JVMFeatures, Plugin);
 
             // get locations of a variable or funcion call in the same file
             case "get_locations":
-                this.eclipseClient.getLocations("sossa1", message.file, message.offset, message.length,
+                this.eclipseClient.getLocations(message.project, message.file, message.offset, message.length,
                   function(data) {
                     if (! data.success)
                       return _self.$error("Could not execute get_locations request", 4);
                     var matches = data.body;
-                    var absFilePath = Path.join(_self.basePath, message.file);
                     _self.sendResult(0, cmd + ":" + subCmd, {
                       uses: matches.filter(function(match) {
                           return match.type == "reference";
@@ -78,7 +77,7 @@ sys.inherits(JVMFeatures, Plugin);
 
             // Do refactoring
             case "refactor":
-                this.eclipseClient.refactor("sossa1", message.file, message.newname, message.offset, message.length,
+                this.eclipseClient.refactor(message.project, message.file, message.newname, message.offset, message.length,
                   function(data) {
                     if (! data.success)
                       return _self.$error("Could not execute refactor request", 5);
@@ -90,7 +89,7 @@ sys.inherits(JVMFeatures, Plugin);
               break;
 
             case "outline":
-                this.eclipseClient.outline("sossa1", message.file,
+                this.eclipseClient.outline(message.project, message.file,
                   function(data) {
                     if (! data.success)
                       return _self.$error("Could not execute outline request", 6);
@@ -99,7 +98,7 @@ sys.inherits(JVMFeatures, Plugin);
                 break;
 
             case "code_format":
-                this.eclipseClient.codeFormat("sossa1", message.file,
+                this.eclipseClient.codeFormat(message.project, message.file,
                   function(data) {
                     if (! data.success)
                       return _self.$error("Could not execute format request", 7);
@@ -108,7 +107,7 @@ sys.inherits(JVMFeatures, Plugin);
                 break;
 
             case "analyze_file":
-              this.eclipseClient.analyzeFile("sossa1", message.file,
+              this.eclipseClient.analyzeFile(message.project, message.file,
                   function(data) {
                     if (! data.success)
                       return _self.$error("Could not execute analyze request", 7);

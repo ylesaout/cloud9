@@ -105,6 +105,7 @@ var saveFileAndDo = function(sender, callback) {
           var command = {
             command : "jvmfeatures",
             subcommand : "complete",
+            project: _self.project,
             file : getFilePath(_self.path),
             offset: offset
           };
@@ -149,6 +150,7 @@ var saveFileAndDo = function(sender, callback) {
         var command = {
           command : "jvmfeatures",
           subcommand : "get_locations",
+          project: _self.project,
           file : getFilePath(_self.path),
           offset: offset,
           length: length
@@ -221,6 +223,7 @@ var saveFileAndDo = function(sender, callback) {
         var command = {
           command : "jvmfeatures",
           subcommand : "get_locations",
+          project: _self.project,
           file : getFilePath(_self.path),
           offset: offset,
           length: identifier.text.length
@@ -269,6 +272,7 @@ var saveFileAndDo = function(sender, callback) {
         var command = {
           command : "jvmfeatures",
           subcommand : "refactor",
+          project: _self.project,
           file : getFilePath(_self.path),
           offset: offset,
           newname: newName,
@@ -289,6 +293,7 @@ var saveFileAndDo = function(sender, callback) {
         var command = {
           command : "jvmfeatures",
           subcommand : "outline",
+          project: _self.project,
           file : getFilePath(_self.path)
         };
 
@@ -314,6 +319,7 @@ var saveFileAndDo = function(sender, callback) {
         var command = {
           command : "jvmfeatures",
           subcommand : "analyze_file",
+          project: _self.project,
           file : getFilePath(_self.path)
         };
 
@@ -351,6 +357,7 @@ var saveFileAndDo = function(sender, callback) {
         var command = {
           command : "jvmfeatures",
           subcommand : "code_format",
+          project: _self.project,
           file : getFilePath(_self.path)
         };
 
