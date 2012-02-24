@@ -90,6 +90,9 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
     sender.on("outline", function(event) {
         _self.outline();
     });
+    sender.on("hierarchy", function(event) {
+        _self.hierarchy(event);
+    });
     sender.on("code_format", function(event) {
         _self.codeFormat();
     });
@@ -236,6 +239,22 @@ function asyncParForEach(array, fn, callback) {
                     next();
             }, function() {
             });
+        });
+    };
+
+    this.hierarchy = function(event) {
+        var data = event.data;
+        var _self = this;
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.hierarchy(_self.doc, data.pos, function(hierarchy) {
+                    if(hierarchy)
+                        return _self.sender.emit("hierarchy", hierarchy);
+                });
+            }
+            else
+                next();
+        }, function() {
         });
     };
 

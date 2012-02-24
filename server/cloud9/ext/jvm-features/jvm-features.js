@@ -68,10 +68,7 @@ sys.inherits(JVMFeatures, Plugin);
                       declarations: matches.filter(function(match) {
                           return match.type == "declaration";
                         })
-                      });
-                    for (var i = 0; i < matches.length; i++) {
-                      console.log(util.inspect(matches[i], true, null));
-                    }
+                    });
                 });
               break;
 
@@ -110,7 +107,15 @@ sys.inherits(JVMFeatures, Plugin);
               this.eclipseClient.analyzeFile(message.project, message.file,
                   function(data) {
                     if (! data.success)
-                      return _self.$error("Could not execute analyze request", 7);
+                      return _self.$error("Could not execute analyze request", 8);
+                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
+                });
+                break;
+            case "hierarchy":
+              this.eclipseClient.hierarchy(message.project, message.file, message.offset,
+                  function(data) {
+                    if (! data.success)
+                      return _self.$error("Could not execute hierarchy request", 9);
                     _self.sendResult(0, cmd + ":" + subCmd, data.body);
                 });
                 break;

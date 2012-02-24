@@ -1,6 +1,5 @@
 /**
  * Module that implements outlines
- * Currently DISABLED
  */
 define(function(require, exports, module) {
 

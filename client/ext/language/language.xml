@@ -22,11 +22,6 @@
             <a:hbox flex="1">
                 <a:model id="mdlOutline">
                     <data>
-                        <entry name="item 1">
-                            <entry name="sub 1"/>
-                        </entry>
-                        <entry name="item 2"/>
-                        <entry name="item 3"/>
                     </data>
                 </a:model>
                 <a:tree
@@ -49,7 +44,7 @@
                       filter-fields = "@name"
                     >
                         <a:caption>
-                          <?lm [@name]{!![@meta] ? "<span style='top:0px; left:0px; position:inherit; color:gray;'> : [@meta]</span>" : ""} ?>
+                          <?lm [@name]{!![@meta] ? "<cpde style='color:gray;'> : [@meta]</code>" : ""} ?>
                         </a:caption>
                         <a:icon value="/static/ext/language/img/[@icon].png" />
                     </a:each>
@@ -57,6 +52,64 @@
                 <a:scrollbar
                   for      = "treeOutline"
                   id       = "sbOutline"
+                  margin   = "2"
+                  skin     = "sbios"
+                  width    = "7"
+                  overflow2 = "auto"/>
+              </a:hbox>
+        </a:vbox>
+    </a:bar>
+
+
+    <a:bar id="barHierarchy" skinset="language_skin" skin="outline" width="300" visible="false">
+        <a:vbox anchors="0 0 0 0">
+            <a:toolbar>
+                <a:bar height = "36">
+                    <a:hbox edge="5">
+                        <a:textbox 
+                          id              = "tbHierarchySearch"
+                          realtime        = "true"
+                          flex            = "1"
+                          skin            = "searchbox_textbox"
+                          class           = "small_font"
+                          focusselect     = "true"
+                          initial-message = "Search Hierarchy"
+                        />
+                    </a:hbox>
+                </a:bar>
+            </a:toolbar>
+            <a:hbox flex="1">
+                <a:model id="mdlHierarchy">
+                    <data>
+                    </data>
+                </a:model>
+                <a:tree
+                  id              = "treeHierarchy"
+                  skin            = "outline-tree"
+                  opencloseaction = "onmouseup"
+                  onafterchoose   = "require('ext/language/hierarchy').jumpToAndClose(this.selected)"
+                  onafterselect   = "require('ext/language/hierarchy').jumpTo(this.selected)"
+                  onkeyup         = "require('ext/language/hierarchy').escapeHierarchy(event)"
+                  model           = "mdlHierarchy"
+                  openadd         = "false"
+                  startcollapsed  = "false"
+                  empty-message   = "No Hierarchy avaialble"
+                  flex            = "1"
+                  anchors = "0 0 0 0">
+                    <a:each
+                      match         = "[entry]"
+                      filter        = "{tbHierarchySearch.value}"
+                      filter-fields = "@name"
+                    >
+                        <a:caption>
+                          <?lm [@name]{!![@meta] ? "<code style='color:gray;'> - [@meta]</code>" : ""} ?>
+                        </a:caption>
+                        <a:icon value="/static/ext/language/img/[@icon].png" />
+                    </a:each>
+                </a:tree>
+                <a:scrollbar
+                  for      = "treeHierarchy"
+                  id       = "sbHierarchy"
                   margin   = "2"
                   skin     = "sbios"
                   width    = "7"

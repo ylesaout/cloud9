@@ -72,6 +72,20 @@ var convertToOutlineTree = function(doc, root) {
   return newRoot;
 };
 
+var convertToHierarchyTree = function(doc, root) {
+  var items = root.items, newItems = [];
+  var newRoot = {
+    icon: root.type,
+    name: root.name,
+    items: newItems,
+    meta: root.meta
+  };
+  for (var i = 0; i < items.length; i++) {
+    newItems.push(convertToHierarchyTree(doc, items[i]));
+  }
+  return newRoot;
+};
+
 var saveFileAndDo = function(sender, callback) {
   var checkSavingDone = function(event) {
     var data = event.data;
@@ -288,7 +302,7 @@ var saveFileAndDo = function(sender, callback) {
         this.proxy.send(command);
     };
 
-    this.outline = function(doc, ast /*null*/, callback) {
+    this.outline = function(doc, fullAst /*null*/, callback) {
         var _self = this;
         var command = {
           command : "jvmfeatures",
@@ -310,6 +324,31 @@ var saveFileAndDo = function(sender, callback) {
         saveFileAndDo(this.sender, doGetOutline);
     };
 
+    this.hierarchy = function(doc, cursorPos, callback) {
+        var _self = this;
+        var offset = calculateOffset(doc, cursorPos);
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "hierarchy",
+          project: _self.project,
+          file : getFilePath(_self.path),
+          offset: offset
+        };
+
+        console.log("hierarchy called");
+
+        var doGetHierarchy = function() {
+          _self.proxy.once("result", "jvmfeatures:hierarchy", function(message) {
+            console.log("hierarchy_result");
+            console.log(message.body);
+            callback(convertToHierarchyTree(doc, message.body));
+          });
+          _self.proxy.send(command);
+        };
+
+        saveFileAndDo(this.sender, doGetHierarchy);
+    };
+
     this.analysisRequiresParsing = function() {
         return false;
     };
@@ -327,9 +366,6 @@ var saveFileAndDo = function(sender, callback) {
 
         var doAnalyzeFile = function() {
           _self.proxy.once("result", "jvmfeatures:analyze_file", function(message) {
-            console.log("analyze_result");
-            console.log(message.body);
-
             callback(message.body.map(function(marker) {
               var start = calculatePosition(doc, marker.offset);
               var end = calculatePosition(doc, marker.offset + marker.length);
