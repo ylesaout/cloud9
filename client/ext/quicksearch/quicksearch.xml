@@ -1,15 +1,12 @@
 <a:application xmlns:a="http://ajax.org/2005/aml">
-    <a:skin id="quicksearch" 
-      src       = "{require('ext/quicksearch/quicksearch').skin}" 
-      icon-path = "/static/ext/quicksearch/icons/" />
-
     <a:bar id="winQuickSearch"
       skinset = "quicksearch"
       visible = "false"
       width   = "350"
       kbclose = "true"
-      top     = "-30"
-      right   = "40">
+      top     = "-27"
+      right   = "30"
+      focussable = "true">
         <a:hbox edge="0 5 5 5">
             <a:textbox id="txtQuickSearch" flex="1" focusselect="true" skin="searchbox_textbox" skinset="default" onkeyup="require('ext/quicksearch/quicksearch').handleQuicksearchEscape(event)" />
             <a:button onclick="require('ext/quicksearch/quicksearch').findprevious()" skin="btnquicksearchnav" class="btnquicksearchnavLeft withDivider" icon="arrow_left_search.png" />
@@ -17,7 +14,7 @@
             <a:button margin="0 0 0 5" skin="btnsearchicon" icon="rounded_close.png" onclick="
               require('ext/quicksearch/quicksearch').toggleDialog(-1);
             " />
-            <div id="divSearchCount"><span class="searchIter">0</span><span class="searchTotal">0</span></div>
+            <div id="divSearchCount"><span class="searchIter" id="spanSearchIter">0</span><span class="searchTotal" id="spanSearchTotal">0</span></div>
         </a:hbox>
     </a:bar>
 </a:application>

@@ -4,18 +4,17 @@
  * @copyright 2010, Ajax.org B.V.
  * @license GPLv3 <http://www.gnu.org/licenses/gpl.txt>
  */
- 
+
 define(function(require, exports, module) {
- 
+
 var ide = require("core/ide");
 var ext = require("core/ext");
 var util = require("core/util");
-var canon = require("pilot/canon");
 var editors = require("ext/editors/editors");
 var ideConsole = require("ext/console/console");
 var skin = require("text!ext/searchinfiles/skin.xml");
 var markup = require("text!ext/searchinfiles/searchinfiles.xml");
-  
+
 module.exports = ext.register("ext/searchinfiles/searchinfiles", {
     name     : "Search in files",
     dev      : "Ajax.org",
@@ -23,7 +22,11 @@ module.exports = ext.register("ext/searchinfiles/searchinfiles", {
     alone    : true,
     offline  : false,
     markup   : markup,
-    skin     : skin,
+    skin     : {
+        id   : "searchinfiles",
+        data : skin,
+        "media-path" : ide.staticPrefix + "/ext/searchinfiles/images/"
+    },
     commands  : {
         "searchinfiles": {hint: "search for a string through all files in the current workspace"}
     },
@@ -45,20 +48,12 @@ module.exports = ext.register("ext/searchinfiles/searchinfiles", {
                 }
             }))
         );
-        
-        this.hotitems["searchinfiles"] = [this.nodes[1]];
+
+        this.hotitems.searchinfiles = [this.nodes[1]];
     },
 
     init : function(amlNode){
-        this.txtFind       = txtSFFind;//winSearchInFiles.selectSingleNode("a:vbox/a:hbox[1]/a:textbox[1]");
-        //this.txtReplace    = txtReplace;//winSearchInFiles.selectSingleNode("a:vbox/a:hbox[1]/a:textbox[1]");
-        //bars
-        //this.barReplace    = barReplace;//winSearchInFiles.selectSingleNode("a:vbox/a:hbox[2]");
-        //buttons
-        //this.btnReplace    = btnReplace;//winSearchInFiles.selectSingleNode("a:vbox/a:hbox/a:button[1]");
-        //this.btnReplace.onclick = this.replace.bind(this);
-        //this.btnReplaceAll = btnReplaceAll;//winSearchInFiles.selectSingleNode("a:vbox/a:hbox/a:button[2]");
-        //this.btnReplaceAll.onclick = this.replaceAll.bind(this);
+        this.txtFind       = txtSFFind;
         this.btnFind       = btnSFFind;//winSearchInFiles.selectSingleNode("a:vbox/a:hbox/a:button[3]");
         this.btnFind.onclick = this.execFind.bind(this);
 
@@ -73,42 +68,32 @@ module.exports = ext.register("ext/searchinfiles/searchinfiles", {
                 name = name.substr(0, 22) + "...";
             rbSFSelection.setAttribute("label", "Selection ( " + name + " )");
         };
-        trSFResult.addEventListener("afterselect", function(e) {
-            var path,
-                root = trFiles.xmlRoot.selectSingleNode("folder[1]"),
-                node = trSFResult.selected,
-                line = 0,
-                text = "";
-            if (node.tagName == "d:maxreached" || node.tagName == "d:querydetail")
-                return;
-            if (node.tagName == "d:excerpt") {
-                path = node.parentNode.getAttribute("path");
-                line = node.getAttribute("line");
-                text = node.parentNode.getAttribute("query");
-            }
-            else {
-                path = node.getAttribute("path");
-                text = node.getAttribute("query");
-            }
-            editors.showFile(root.getAttribute("path") + "/" + path, line, 0, text);
-        });
-        
-        ideConsole.enable();
-        if (!this.$panel) {
-            this.$panel = tabConsole.add(this.pageTitle, this.pageID);
-            this.$panel.appendChild(trSFHbox);
-            tabConsole.set(this.pageID);
-            trSFResult.setProperty("visible", true);
-            this.$model = trSFResult.getModel();
-            // make sure the tab is shown when results come in
-            this.$model.addEventListener("afterload", function() {
-                tabConsole.set(_self.pageID);
+        trSFHbox.addEventListener("afterrender", function(){
+            trSFResult.addEventListener("afterselect", function(e) {
+                var path,
+                    root = trFiles.xmlRoot.selectSingleNode("folder[1]"),
+                    node = trSFResult.selected,
+                    line = 0,
+                    text = "";
+                if (node.tagName == "d:maxreached" || node.tagName == "d:querydetail")
+                    return;
+                if (node.tagName == "d:excerpt") {
+                    path = node.parentNode.getAttribute("path");
+                    line = node.getAttribute("line");
+                    text = node.parentNode.getAttribute("query");
+                }
+                else {
+                    path = node.getAttribute("path");
+                    text = node.getAttribute("query");
+                }
+                editors.showFile(root.getAttribute("path") + "/" + path, line, 0, text);
             });
-        }
+        });
+        //ideConsole.show();
     },
 
     getSelectedTreeNode: function() {
-        var node = trFiles.selected;
+        var node = self["trFiles"] ? trFiles.selected : require("ext/filesystem/filesystem").model.queryNode("folder[1]");
         if (!node)
             node = trFiles.xmlRoot.selectSingleNode("folder[1]");
         while (node.tagName != "folder")
@@ -119,11 +104,11 @@ module.exports = ext.register("ext/searchinfiles/searchinfiles", {
     toggleDialog: function(isReplace, forceShow) {
         ext.initExtension(this);
 
-        if (apf.isWin && (location.host.indexOf('localhost') > -1 || location.host.indexOf('127.0.0.1') > -1)) {
+        if (apf.isWin && (location.host.indexOf("localhost") > -1 || location.host.indexOf("127.0.0.1") > -1)) {
             return util.alert("Search in Files", "Not Supported",
                 "I'm sorry, searching through files is not yet supported on the Windows platform.");
         }
-        
+
         if (!winSearchInFiles.visible || forceShow || this.$lastState != isReplace) {
             //this.setupDialog(isReplace);
             var editor = editors.currentEditor;
@@ -141,7 +126,7 @@ module.exports = ext.register("ext/searchinfiles/searchinfiles", {
     },
 
     onHide : function() {
-        var editor = require('ext/editors/editors').currentEditor;
+        var editor = editors.currentEditor;
         if (editor && editor.ceEditor)
             editor.ceEditor.focus();
     },
@@ -152,7 +137,7 @@ module.exports = ext.register("ext/searchinfiles/searchinfiles", {
 
     setupDialog: function(isReplace) {
         this.$lastState = isReplace;
-        
+
         // hide all 'replace' features
         //this.barReplace.setProperty("visible", isReplace);
         //this.btnReplace.setProperty("visible", isReplace);
@@ -161,12 +146,12 @@ module.exports = ext.register("ext/searchinfiles/searchinfiles", {
     },
 
     getOptions: function() {
-        var matchCase = '0';
+        var matchCase = "0";
         if (chkSFMatchCase.checked)
-            matchCase = '1';
-        var regex = '0';
+            matchCase = "1";
+        var regex = "0";
         if (chkSFRegEx.checked)
-            regex = '1';
+            regex = "1";
         return {
             query: txtSFFind.value,
             pattern: ddSFPatterns.value,
@@ -179,34 +164,43 @@ module.exports = ext.register("ext/searchinfiles/searchinfiles", {
         var _self = this;
         winSearchInFiles.hide();
         // show the console (also used by the debugger):
-        ideConsole.enable();
+        ideConsole.show();
         if (!this.$panel) {
             this.$panel = tabConsole.add(this.pageTitle, this.pageID);
+            this.$panel.setAttribute("closebtn", true);
             this.$panel.appendChild(trSFHbox);
+            tabConsole.set(_self.pageID);
+            trSFHbox.show();
             trSFResult.setProperty("visible", true);
             this.$model = trSFResult.getModel();
             // make sure the tab is shown when results come in
             this.$model.addEventListener("afterload", function() {
                 tabConsole.set(_self.pageID);
             });
+
+            this.$panel.addEventListener("afterclose", function(){
+                this.removeNode();
+                return false;
+            });
+        }
+        else {
+            tabConsole.appendChild(this.$panel);
         }
         // show the tab
         tabConsole.set(this.pageID);
-        
+
         var node = this.$currentScope = grpSFScope.value == "projects"
             ? trFiles.xmlRoot.selectSingleNode("folder[1]")
             : this.getSelectedTreeNode();
-
-        var findValueSanitized = txtSFFind.value.trim().replace(/([\[\]\{\}])/g, '\\$1');
+            
+        var findValueSanitized = txtSFFind.value.trim().replace(/([\[\]\{\}])/g, "\\$1");
         _self.$model.clear();
         trSFResult.setAttribute("empty-message", "Searching for '" + findValueSanitized + "'...");
         davProject.report(node.getAttribute("path"), "codesearch", this.getOptions(), function(data, state, extra){
-            if (state !== apf.SUCCESS)
-                return;
-            if (data.getAttribute("count") == "0")
-                trSFResult.setAttribute("empty-message", "No results found for '" + findValueSanitized + "'");
-            else
-                _self.$model.load(data);
+            if (state !== apf.SUCCESS || !parseInt(data.getAttribute("count"), 10))
+                return trSFResult.setAttribute("empty-message", "No results found for '" + findValueSanitized + "'");;
+
+            _self.$model.load(data);
         });
 
         ide.dispatchEvent("track_action", {type: "searchinfiles"});

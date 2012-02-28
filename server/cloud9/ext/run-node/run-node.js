@@ -41,21 +41,21 @@ sys.inherits(NodeRuntimePlugin, Plugin);
         var _self = this;
 
         var res = true;
+                
         switch (cmd) {
             case "run":
-                this.$run(message, client);
+                this.$run(message);
                 break;
             case "rundebug":
                 netutil.findFreePort(this.NODE_DEBUG_PORT, this.NODE_DEBUG_PORT + 1000, "localhost", function(err, port) {
                     if (err)
                         return _self.$error("Could not find a free port", 9, err);
 
-                    _self.NODE_DEBUG_PORT = port;
-                    message.preArgs = ["--debug=" + _self.NODE_DEBUG_PORT];
+                    message.preArgs = ["--debug=" + port];
                     message.debug = true;
-                    _self.$run(message, client);
+                    _self.$run(message);
 
-                    _self.$startDebug();
+                    _self.$startDebug(null, port);
                 });
                 break;
             case "rundebugbrk":
@@ -63,10 +63,9 @@ sys.inherits(NodeRuntimePlugin, Plugin);
                     if (err)
                         return _self.$error("Could not find a free port", 9, err);
 
-                    _self.NODE_DEBUG_PORT = port;
-                    message.preArgs = ["--debug-brk=" + _self.NODE_DEBUG_PORT];
+                    message.preArgs = ["--debug-brk=" + port];
                     message.debug = true;
-                    _self.$run(message, client);
+                    _self.$run(message);
 
                     // in parallel (both operations translate to async processes):
                     // * execute a node process that executes the source file (with debug)
@@ -74,7 +73,7 @@ sys.inherits(NodeRuntimePlugin, Plugin);
                     //   note: the debug proxy has a builtin retry functionality, this will
                     //         resolve incidents when the debugger is not ready yet for the
                     //         proxy
-                    _self.$startDebug();
+                    _self.$startDebug(null, port);
                 });
                 break;
             case "rundebugchrome":
@@ -136,7 +135,7 @@ sys.inherits(NodeRuntimePlugin, Plugin);
         catch(e) {}
     };
 
-    this.$run = function(message, client) {
+    this.$run = function(message) {
         var _self = this;
 
         if (this.child)
@@ -205,7 +204,7 @@ sys.inherits(NodeRuntimePlugin, Plugin);
         delete this.nodeDebugProxy;
     };
 
-    this.$startDebug = function(message) {
+    this.$startDebug = function(message, port) {
         var _self = this;
 
         /*
@@ -221,7 +220,7 @@ sys.inherits(NodeRuntimePlugin, Plugin);
         if (this.nodeDebugProxy)
             return this.$error("Debug session already running", 4, message);
 
-        this.nodeDebugProxy = new NodeDebugProxy(this.NODE_DEBUG_PORT);
+        this.nodeDebugProxy = new NodeDebugProxy(port);
         this.nodeDebugProxy.on("message", function(body) {
             var msg = {
                 "type": "node-debug",

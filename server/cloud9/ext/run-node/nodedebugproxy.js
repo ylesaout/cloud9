@@ -2,12 +2,11 @@
  * @copyright 2010, Ajax.org Services B.V.
  * @license GPLv3 <http://www.gnu.org/licenses/gpl.txt>
  */
-var net = require("net");
 var sys = require("sys");
 var NodeSocket = require("v8debug/NodeSocket");
 var StandaloneV8DebuggerService = require("v8debug/StandaloneV8DebuggerService");
 
-module.exports = DebugProxy = function(port) {
+var DebugProxy = module.exports = function(port) {
     process.EventEmitter.call(this);
     var _self = this;
 
@@ -25,7 +24,6 @@ module.exports = DebugProxy = function(port) {
         _self.emit("connection");
     });
     this.service.addEventListener("debugger_command_0", function(msg) {
-        //console.log("REC ", msg.data);
         _self.emit("message", msg.data);
     });
 };
@@ -39,7 +37,6 @@ sys.inherits(DebugProxy, process.EventEmitter);
     };
 
     this.send = function(msgJson) {
-        //console.log("SEND " + JSON.stringify(msgJson))
         this.service.debuggerCommand(0, JSON.stringify(msgJson));
     };
 

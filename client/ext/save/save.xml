@@ -6,62 +6,57 @@
       center    = "true"
       render    = "runtime"
       width     = "512"
-      skin      = "change_photo">
-        <a:vbox padding="10" edge="15 20 10 20">
+      skin      = "bk-window2"
+      draggable = "true"
+      class     = "relative"
+      onkeydown = "
+        if(event.keyCode == 89) {
+            btnSaveYes.dispatchEvent('click', {htmlEvent: {}});
+        }
+        if(event.keyCode == 78) {
+            btnSaveNo.dispatchEvent('click', {htmlEvent: {}});
+        }
+      ">
+        <a:vbox padding="10" edge="15 20 25 20">
             <h3 class="wheader">Save this file?</h3>
             <div>This file has unsaved changes. Would you like to save the file before closing?</div>
         </a:vbox>
-    
-        <a:vbox>
-            <a:divider skin="hordivider" />
-            <a:hbox pack="end" padding="7" edge="10 10 5 10">
-                <a:button id="btnYesAll" caption="Yes to all" />
-                <a:button id="btnNoAll" caption="No to all" />
-                <a:filler />
-                <a:button id="btnSaveYes" width="80" default="3" class="ui-btn-green" caption="Yes" />
-                <a:button id="btnSaveNo" width="80" class="ui-btn-red" caption="No" />
-                <a:button id="btnSaveCancel" width="80">Cancel</a:button>
-            </a:hbox>
-        </a:vbox>
+
+        <a:hbox edge="6 10 10" pack="end" padding="8">
+            <a:button id="btnYesAll" caption="Yes to all" skin="btn-default-css3" />
+            <a:button id="btnNoAll" caption="No to all" skin="btn-default-css3"/>
+            <a:filler />
+            <a:button id="btnSaveYes" default="3" class="btn-green" caption="Yes" skin="btn-default-css3"/>
+            <a:button id="btnSaveNo" class="btn-red" caption="No" skin="btn-default-css3"/>
+            <a:button id="btnSaveCancel" skin="btn-default-css3">Cancel</a:button>
+        </a:hbox>
     </a:window>
-    
+
     <a:script><![CDATA[
-        function gotoParent() {
-            var node = trSaveAs.selected.parentNode;
-            
-            if (trSaveAs.getModel().data != node)
-                trSaveAs.expandAndSelect(node);
-        }
-        
         function chooseSaveAsFolder(folder) {
             var fooPath = folder.getAttribute("path");
-            if(folder.getAttribute("type") != 'folder') {
-                var fooPath = fooPath.split('/');
+            if (folder.getAttribute("type") != "folder" && folder.tagName != "folder") {
+                var fooPath = fooPath.split("/");
                 txtSaveAs.setValue(fooPath.pop());
-                fooPath = fooPath.join('/');
+                fooPath = fooPath.join("/");
             }
             lblPath.setProperty('caption', fooPath + '/');
-        }
-                    
-        function chooseFile(file) {
-            if (file.getAttribute("type") == "file") 
-                require("ext/save/save").saveas();
-            else
-                trSaveAs.expandAndSelect(file);
         }
     ]]></a:script>
 
     <a:window
       id        = "winSaveAs"
       center    = "true"
-      height    = "410"
+      height    = "395"
       icon      = ""
       buttons   = "close"
+      skin      = "bk-window"
       kbclose   = "true"
       resizable = "true"
       title     = "Save As"
       onshow    = "require('ext/save/save').expandTree();"
-      width     = "480">
+      width     = "480"
+      draggable = "true">
         <a:vbox
           anchors   = "10 10 0 10"
           padding   = "5">
@@ -72,10 +67,11 @@
                 <a:textbox
                   id           = "txtSaveAs"
                   flex         = "7"
-                  onkeydown    = "if (event.keyCode == 13) require('ext/save/save').choosePath(this.getValue())" />
+                  focusselect  = "true"
+                  onkeydown    = "if (event.keyCode == 13) require('ext/save/save').choosePath(lblPath.getProperty('caption') + this.getValue())" />
             </a:hbox>
             <a:label id="lblPath" class="lbl_filepath" />
-         
+
             <div class="dgLikeContaier">
                 <div class="heading">Project folder</div>
                 <a:hbox
@@ -85,6 +81,7 @@
                       id            = "trSaveAs"
                       class         = "trDgLike"
                       flex          = "1"
+                      scrollbar     = "sbShared 2 2 2"
                       model         = "{require('ext/filesystem/filesystem').model}"
                       contextmenu   = "mnuCtxTree"
                       onafterselect = "chooseSaveAsFolder(this.selected)"
@@ -113,68 +110,8 @@
                         <a:drop match="[folder|file]" target="[folder]"
                             action="tree-append" copy="{event.ctrlKey}" />
                     </a:tree>
-                    
-                    <a:scrollbar
-                        for      = "trSaveAs"
-                        margin   = "2"
-                        skin     = "sbios"
-                        width    = "7"
-                        overflow = "auto"
-                    />
                 </a:hbox>
             </div>
-<!--            <a:bindings id="bndSaveAdFolder">
-               <a:each match="[folder|file]">
-                   <a:insert
-                     match = "[folder]"
-                     get   = "{location.host and davProject.readdir([@path])}" />
-                   <a:caption match="[@name]" />
-                   <a:icon
-                     match = "[folder]"
-                     value = "folder.png" />
-                   <a:icon
-                     match = "[file]"
-                     value = "{require('core/util').getFileIcon(%[.])}" />
-                </a:each>
-            </a:bindings>-->
-<!--                <a:datagrid id="dgTest"
-                  autoselect       = "false"
-                  flex             = "3"
-                  model            = "{trSaveAs.selected}"
-                  onafterselect    = "txtSaveAs.setValue(this.selected.getAttribute('path'))"
-                  onafterchoose    = "chooseFile(this.selected)"
-                  onkeydown        = "if (event.keyCode == 8) { gotoParent(); return false; }"
-                  loading-message  = "Loading...">
-                    <a:each
-                      match         = "[folder|file]"
-                      filter        = "{drpSaveAs.value.replace('*', '')}"
-                      filter-fields = "@name"
-                      sort          = "[@name]" 
-                      sort-method   = "filesort">
-                        <a:load get="{ location.host and davProject.readdir([@path]) }" />
-                        <a:column
-                          caption   = "Name"
-                          value     = "[@name]"
-                          width     = "60%" 
-                          icon      = "{
-                            if (#[self::folder])
-                                'folder.png';
-                            else
-                                require('core/util').getFileIcon(%[.]);
-                          }" />
-                        <a:column
-                          caption   = "Size"
-                          value     = "[@size]"
-                          align     = "right"
-                          width     = "20%" />
-                        <a:column
-                          caption   = "Type"
-                          value     = "[@type]"
-                          width     = "20%" />
-                    </a:each>
-                    <a:actions /> 
-                </a:datagrid>-->
-
             <a:hbox padding="15" align="center">
                 <a:button
                   width    = "104"
@@ -184,10 +121,12 @@
                   tooltip  = "Create folder">
                     Create folder
                 </a:button>
-                <a:checkbox 
-                  skin    = "db-checkbox" 
-                  class   = "bluecheck" 
-                  checked = "true" 
+                <a:filler />
+                <a:checkbox
+                  skin    = "checkbox_grey"
+                  checked = "true"
+                  width   = "120"
+                  margin  = "4 0 0"
                   onafterchange="
                     if(this.checked)
                         trSaveAs.$ext.className = trSaveAs.$ext.className.replace(/hidefiles/, '');
@@ -195,18 +134,20 @@
                         apf.setStyleClass(trSaveAs.$ext, 'hidefiles');
                   ">Show files in tree</a:checkbox>
             </a:hbox>
-            <a:divider skin="hordivider" />
             <a:hbox
-              edge    = "4 0 0"
+              edge    = "23 0 10"
               pack    = "end"
-              padding = "5">
+              padding = "8">
                 <a:button
+                  skin    = "btn-default-css3"
                   onclick = "winSaveAs.hide()">
                     Cancel
                 </a:button>
                 <a:button
-                  class    = "ui-btn-green"
-                  onclick  = "require('ext/save/save').saveFileAs()">
+                  class    = "btn-green"
+                  default  = "2"
+                  skin     = "btn-default-css3"
+                  onclick  = "require('ext/save/save').confirmSaveAs()">
                     Save
                 </a:button>
             </a:hbox>

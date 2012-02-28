@@ -14,9 +14,7 @@ exports.evaluate = function(expression, callback){
     var _self = this;
     var frame = (self.dgStack && dgStack.selected && dgStack.selected.getAttribute("ref")) || null;
     
-    dbg.evaluate(expression, frame, null, null, callback || function(xmlNode){
-        exports.showObject(xmlNode);
-    });
+    dbg.evaluate(expression, frame, null, null, callback || exports.showObject);
 };
 
 exports.checkChange = function(xmlNode){
@@ -72,7 +70,7 @@ exports.consoleTextHandler = function(e) {
                 className = body.className;
 
             if (className == "Function") {
-                var pre = "<a class='xmlhl' href='javascript:void(0)' style='font-weight:bold;font-size:7pt;color:green' onclick='require(\"ext/console/console\").showObject(null, ["
+                var pre = "<a class='xmlhl' href='javascript:void(0)' style='font-weight:bold;font-size:7pt;color:green' onclick='require(\"ext/debugger/inspector\").showObject(null, ["
                     + body.scriptId + ", " + body.line + ", " + body.position + ", "
                     + body.handle + ",\"" + (body.name || body.inferredName) + "\"], \""
                     + (expression || "").split(";").pop().replace(/"/g, "\\&quot;") + "\")'>";
@@ -81,7 +79,7 @@ exports.consoleTextHandler = function(e) {
                 Logger.log(name + "()", "log", pre, post, txtOutput);
             }
             else if (className == "Array") {
-                var pre = "<a class='xmlhl' href='javascript:void(0)' style='font-weight:bold;font-size:7pt;color:green' onclick='require(\"ext/console/console\").showObject(\""
+                var pre = "<a class='xmlhl' href='javascript:void(0)' style='font-weight:bold;font-size:7pt;color:green' onclick='require(\"ext/debugger/inspector\").showObject(\""
                     + apf.escapeXML(xmlNode.xml.replace(/"/g, "\\\"")) + "\", "
                     + ref + ", \"" + apf.escapeXML((expression || "").trim().split(/;|\n/).pop().trim().replace(/"/g, "\\\"")) + "\")'>";
                 var post = " }</a>";
@@ -94,7 +92,7 @@ exports.consoleTextHandler = function(e) {
                 for (var i = 0, l = body.properties.length; i < l; i++)
                     refs.push(props[i].ref);
 
-                var pre = "<a class='xmlhl' href='javascript:void(0)' style='font-weight:bold;font-size:7pt;color:green' onclick='require(\"ext/console/console\").showObject(\""
+                var pre = "<a class='xmlhl' href='javascript:void(0)' style='font-weight:bold;font-size:7pt;color:green' onclick='require(\"ext/debugger/inspector\").showObject(\""
                     + apf.escapeXML(xmlNode.xml.replace(/"/g, "\\\"")) + "\", "
                     + ref + ", \"" + apf.escapeXML((expression || "").trim().split(/;|\n/).pop().trim().replace(/"/g, "\\\"")) + "\")'>";
                 var post = " }</a>";
@@ -181,11 +179,19 @@ exports.calcName = function(xmlNode, useDisplay){
 
         if (!name)
             break;
+        
+        var xmlDecode = function (input) {
+            var e = document.createElement('div');
+            e.innerHTML = input;
+            return e.childNodes.length === 0 ? "" : e.childNodes[0].nodeValue;
+        }
+        
+        name = xmlDecode(name);
 
         path.unshift(!name.match(/^[a-z_\$][\w_\$]*$/i)
-            ? (parseInt(name) == name
+            ? (parseInt(name, 10) == name
                 ? "[" + name + "]"
-                : "[\"" + name.replace(/'/g, "\\'") + "\"]")
+                : "[\"" + name + "\"]")
             : name);
         loopNode = loopNode.parentNode;
         if (isMethod) {
@@ -201,6 +207,84 @@ exports.calcName = function(xmlNode, useDisplay){
         path[0] = path[0].substr(2, path[0].length - 4);
     
     return path.join(".").replace(/\.\[/g, "[");
+};
+
+/**
+ * Given an xmlNode determines whether this item can be edited in realtime
+ */
+exports.isEditable = function(xmlNode) {
+    if (!xmlNode) return false;
+    
+    var type = xmlNode.getAttribute("type");
+    
+    // we can edit these types
+    switch (type) {
+        case "string":
+        case "null":
+        case "number":
+        case "boolean":
+            break;
+        default:
+            return false;
+    }
+    
+    // V8 debugger cannot change variables that are locally scoped, so we need at least 
+    // one parent property.
+    if (exports.calcName(xmlNode, true).indexOf(".") === -1) {
+        return false;
+    }
+    
+    // ok, move along
+    return true;
+};
+
+/**
+ * Determines whether a new value is valid to pass into an attribute
+ */
+exports.validateNewValue = function(xmlNode, value) {
+    var type = xmlNode.getAttribute("type");
+    var validator;
+    
+    switch (type) {
+        case "string":
+        case "null":
+            validator = /(.*|^$)/;
+            break;
+        case "number":
+            validator = /^\d+(\.\d+)?$/;
+            break;
+        case "boolean":
+            validator = /^(true|false)$/;
+            break;
+        default:
+            return false; // other types cannot be edited
+    }
+    
+    return validator.test(value);
+};
+
+/**
+ * Updates the value of a property to a new value
+ */
+exports.setNewValue = function(xmlNode, value, callback) {
+    // find the prop plus its ancestors
+    var expression = exports.calcName(xmlNode, true);
+      
+    // build an instruction for the compiler
+    var instruction;
+    switch (xmlNode.getAttribute("type")) {
+        case "string":
+        case "null":
+            // escape strings
+            instruction = expression + " = \"" + value.replace(/"/g, "\\\"") + "\"";
+            break;
+        default:
+            instruction = expression + " = " + value;
+            break;
+    }
+    
+    // dispatch it to the debugger
+    exports.evaluate(instruction, callback);    
 };
 
 });

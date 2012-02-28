@@ -36,7 +36,7 @@ module.exports = ext.register("ext/acebugs/acebugs", {
 
     hook: function() {
         var _self = this;
-        this.annotationWorker = new Worker("/static/ext/acebugs/annotation_worker.js");
+        this.annotationWorker = new Worker(ide.staticPrefix + "/ext/acebugs/annotation_worker.js");
         this.lastAnnotations = "";
         this.annotationWorker.onmessage = function(e) {
             if (e.data.outXml == _self.lastAnnotations)
@@ -78,7 +78,7 @@ module.exports = ext.register("ext/acebugs/acebugs", {
         }, {
             ident   : "aceAnnotations",
             primary : {
-                backgroundImage: "/static/style/images/debugicons.png",
+                backgroundImage: ide.staticPrefix + "/style/images/debugicons.png",
                 defaultState: { x: -6, y: -391 },
                 activeState: { x: -6, y: -391 }
             }

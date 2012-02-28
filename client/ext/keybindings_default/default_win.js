@@ -5,17 +5,17 @@
 
 define(function(require, exports, module) {
 
-var ide = require("core/ide");
 var keys = require("ext/keybindings/keybindings");
 
 return keys.onLoad({
     "ext" : {
         "console" : {
             "switchconsole": "Shift-Esc"
-        },        
+        },
         "save" : {
             "quicksave": "Ctrl-S",
-            "saveas": "Ctrl-Shift-S"
+            "saveas": "Ctrl-Shift-S",
+            "reverttosaved": "Ctrl-Shift-Q"
         },
         "undo" : {
             "undo": "Ctrl-Z",
@@ -29,11 +29,15 @@ return keys.onLoad({
         "quickwatch": {
             "quickwatch": "Ctrl-Q"
         },
-        "run": {
+        "runpanel": {
+            "run" : "Ctrl-F5",
+            "stop" : "Shift-F5"
+        },
+        "debugger": {
             "resume": "F8",
-            "stepinto": "F9",
+            "stepinto": "F11",
             "stepover": "F10",
-            "stepout": "Shift-F9"
+            "stepout": "Shift-F11"
         },
         "zen": {
             "zen": "Ctrl-E",
@@ -50,7 +54,8 @@ return keys.onLoad({
         },
         "newresource": {
             "newfile": "Ctrl-N",
-            "newfolder": "Ctrl-Shift-N"
+            "newfiletemplate": "Ctrl-Shift-N",
+            "newfolder": "Ctrl-Alt-N"
         },
         "quicksearch": {
             "find": "Ctrl-F",
@@ -74,8 +79,8 @@ return keys.onLoad({
             "closetab": "Ctrl-W",
             "closealltabs": "Ctrl-Shift-W",
             "closeallbutme": "Ctrl-Alt-W",
-            "gototabright": "Ctrl-Shift-]",
-            "gototableft": "Ctrl-Shift-[",
+            "gototabright": "Ctrl-]",
+            "gototableft": "Ctrl-[",
             "tab1": "Ctrl-1",
             "tab2": "Ctrl-2",
             "tab3": "Ctrl-3",
@@ -86,7 +91,16 @@ return keys.onLoad({
             "tab8": "Ctrl-8",
             "tab9": "Ctrl-9",
             "tab0": "Ctrl-0",
-            "revealtab": "Ctrl-Shift-L"
+            "revealtab": "Ctrl-Shift-L",
+            "nexttab": "Ctrl-Tab",
+            "previoustab": "Ctrl-Shift-Tab"
+        },
+        "tabsessions" : {
+            "savetabsession": "Ctrl-Alt-S"
+        },
+        "splitview" : {
+            "mergetableft": "Ctrl-Alt-[",
+            "mergetabright": "Ctrl-Alt-]"
         },
         "code" : {
             "selectall": "Ctrl-A",
@@ -134,6 +148,10 @@ return keys.onLoad({
             "backspace": "Backspace",
             "outdent": "Shift-Tab",
             "indent": "Tab"
+        },
+        "language": {
+            "complete": "Ctrl-Space|Alt-Space",
+            "renameVar": "Ctrl-Alt-R"
         }
     }
 });

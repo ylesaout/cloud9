@@ -4,7 +4,6 @@
  */
 define(function(require, exports, module) {
 
-var ide = require("core/ide");
 var keys = require("ext/keybindings/keybindings");
 
 return keys.onLoad({
@@ -14,11 +13,12 @@ return keys.onLoad({
         },
         "save" : {
             "quicksave": "Command-S",
-            "saveas": "Command-Shift-S"
+            "saveas": "Command-Shift-S",
+	    "reverttosaved": "Command-Shift-Q"
         },
         "undo" : {
             "undo": "Command-Z",
-            "redo": "Command-Y"
+            "redo": "Command-Shift-Z"
         },
         "clipboard" : {
             "cut": "Shift-Command-X",
@@ -28,7 +28,11 @@ return keys.onLoad({
         "quickwatch": {
             "quickwatch": "Option-Q"
         },
-        "run": {
+        "runpanel": {
+            "run" : "F5",
+            "stop" : "Shift-F5"
+        },
+        "debugger": {
             "resume": "F8",
             "stepinto": "F11",
             "stepover": "F10",
@@ -48,8 +52,9 @@ return keys.onLoad({
             "gotofile": "Alt-Shift-R"
         },
         "newresource": {
-            "newfile": "Command-N",
-            "newfolder": "Command-Shift-N"
+            "newfile": "Option-Shift-N",
+            "newfiletemplate": "Option-Ctrl-N",
+            "newfolder": "Option-Ctrl-Shift-N"
         },
         "quicksearch": {
             "find": "Command-F",
@@ -70,11 +75,11 @@ return keys.onLoad({
             "showsettings": "Command-,"
         },
         "tabbehaviors" : {
-            "closetab": "Command-W",
-            "closealltabs": "Command-Shift-W",
+            "closetab": "Option-W",
+            "closealltabs": "Option-Shift-W",
             "closeallbutme": "Command-Option-W",
-            "gototabright": "Command-Shift-]",
-            "gototableft": "Command-Shift-[",
+            "gototabright": "Command-]",
+            "gototableft": "Command-[",
             "tab1": "Command-1",
             "tab2": "Command-2",
             "tab3": "Command-3",
@@ -85,7 +90,16 @@ return keys.onLoad({
             "tab8": "Command-8",
             "tab9": "Command-9",
             "tab0": "Command-0",
-            "revealtab": "Command-Shift-L"
+            "revealtab": "Command-Shift-L",
+            "nexttab": "Command-Tab|Option-Tab",
+            "previoustab": "Command-Shift-Tab|Option-Shift-Tab"
+        },
+        "tabsessions" : {
+            "savetabsession": "Command-Alt-S"
+        },
+        "splitview" : {
+            "mergetableft": "Command-Option-[",
+            "mergetabright": "Command-Option-]"
         },
         "code" : {
             "selectall": "Command-A",
@@ -134,6 +148,10 @@ return keys.onLoad({
             "backspace": "Command-Backspace|Option-Backspace|Backspace",
             "outdent": "Shift-Tab",
             "indent": "Tab"
+        },
+        "language": {
+            "complete": "Ctrl-Space|Alt-Space",
+            "renameVar": "Command-Option-R"
         }
     }
 });

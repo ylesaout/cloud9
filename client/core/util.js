@@ -40,6 +40,59 @@ exports.question = function(title, header, msg, onyes, onyestoall, onno, onnotoa
     btnQuestionNoToAll.onclick = onnotoall;
 };
 
+exports.removeInteractive = function (amlNode) {
+    if (window.cloud9config.readonly == true)
+        return false;
+    
+    if (amlNode.confirmed == undefined)
+        amlNode.confirmed = false;
+    
+    if (!amlNode.confirmed) {
+        var files = amlNode.getSelection();
+
+        function confirm(file) {
+            var name = file.getAttribute("name");
+            require("core/util").question(
+                "Remove file?",
+                "You are about to remove the file " + name,
+                "Do you want continue? (This change cannot be undone)",
+                function () { // Yes
+                    amlNode.confirmed = true;
+                    amlNode.remove(file);
+                    amlNode.confirmed = false;
+                    if (files.length > 0)
+                        confirm(files.shift());
+                    else
+                        winQuestion.hide();
+                },
+                function () { // Yes to all
+                    amlNode.confirmed = true;
+                    amlNode.remove(file);
+                    files.forEach(function (file) {
+                        amlNode.remove(file);
+                    });
+                    amlNode.confirmed = false;
+                    winQuestion.hide();
+                },
+                function () { // No
+                    if (files.length > 0)
+                        confirm(files.shift());
+                    else
+                        winQuestion.hide();
+                },
+                function () { // No to all
+                    winQuestion.hide();
+                }
+            );
+            btnQuestionYesToAll.setAttribute("visible", files.length > 0);
+            btnQuestionNoToAll.setAttribute("visible", files.length > 0);
+        }
+        confirm(files.shift());
+        return false;
+    } else
+        return true;
+};
+
 var SupportedIcons = {
    "application/xhtml+xml":'html',
    "text/css": "css",
@@ -57,6 +110,7 @@ var SupportedIcons = {
     "text/x-script.ocaml": 'page_white_code',
     "text/x-script.clojure": 'page_white_code',
     "application/x-httpd-php": 'page_white_php',
+    "text/x-coldfusion": 'page_white_php',
     "text/x-script.ruby": "page_white_ruby",
     "text/x-script.coffeescript": 'page_white_cup',
     "text/cpp": 'page_white_cplusplus',
@@ -84,6 +138,7 @@ var contentTypes = {
     "mml": "application/mathml+xml",
     
     "php": "application/x-httpd-php",
+    "phtml": "application/x-httpd-php",
     "html": "text/html",
     "xhtml": "application/xhtml+xml",
     "coffee": "text/x-script.coffeescript",
@@ -122,7 +177,9 @@ var contentTypes = {
 
     "clj": "text/x-script.clojure",
     "ml": "text/x-script.ocaml",
-    "mli": "text/x-script.ocaml"
+    "mli": "text/x-script.ocaml",
+    "cfm": "text/x-coldfusion",
+    "sql": "text/x-sql"
 };
     
 exports.getFileIcon = function(xmlNode) {

@@ -1,22 +1,11 @@
 /**
  * Extension manager for the Ajax.org Cloud IDE
  *
- * Modules that extend the functionality of the editing environment
- * - Add menubuttons/menus
- * - Add items to menus (optional show/hide toggle)
- * - Add toolbar (optional show/hide toggle)
- * - Add buttons to toolbar (optional show/hide toggle)
- * - Add custom non-file tree items
- * - Register an editor to the application for file extensions
- * - Add features to existing editors
- * - Add AML elements
- * - Add layout modes
- *
  * @copyright 2010, Ajax.org B.V.
  * @license GPLv3 <http://www.gnu.org/licenses/gpl.txt>
  */
 define(function(require, exports, module) {
-    
+
 var ide = require("core/ide");
 var util = require("core/util");
 
@@ -32,7 +21,7 @@ module.exports = ext = {
                 if (!oExtension.hook)
                     ext.initExtension(oExtension);
             },
-            unregister : function(oExtension){}
+            unregister : function(oExtension) {}
         }
     },
     extensions    : [],
@@ -43,7 +32,7 @@ module.exports = ext = {
     },
 
     currentLayoutMode : null,
-    
+
     addType : function(defName, regHandler, unregHandler){
         this[defName.toUpperCase()] = ++this.defLength;
         this.extHandlers[this.defLength] = {
@@ -77,15 +66,25 @@ module.exports = ext = {
         }
 
         oExtension.registered = true;
-        oExtension.path       = path;
+        oExtension.path = path;
 
         this.extHandlers[oExtension.type].register(oExtension);
 
         this.extLut[path] = oExtension;
         this.extensions.push(oExtension);
 
-        if (oExtension.hook)
+        if (oExtension.hook) {
             oExtension.hook();
+            
+            ide.dispatchEvent("hook." + oExtension.path, {
+                ext : oExtension
+            });
+            ide.addEventListener("$event.hook." + oExtension.path, function(callback){
+                callback.call(this, {ext : oExtension});
+            });
+        }
+        
+        ide.dispatchEvent("ext.register", {ext: oExtension});
 
         return oExtension;
     },
@@ -129,8 +128,8 @@ module.exports = ext = {
         //Check deps to clean up
         var deps = oExtension.deps;
         if (deps) {
-            for (var dep, i = 0, l = deps.length; i < l; i++) {
-                dep = deps[i];
+            for (var dep, ii = 0, ll = deps.length; ii < ll; ii++) {
+                dep = deps[ii];
                 if (dep.registered && dep.type == this.GENERAL && !oExtension.alone)
                     this.unregister(dep, true);
             }
@@ -152,11 +151,18 @@ module.exports = ext = {
         if (oExtension.inited)
             return;
 
+        var skin = oExtension.skin;
+        if (skin && typeof skin == "object") {
+            var data = oExtension.skin.data;
+            oExtension.skinNode = new apf.skin(apf.extend({}, oExtension.skin, {data: null}));
+            oExtension.skinNode.setProperty("src", data);
+            apf.document.body.appendChild(oExtension.skinNode);
+        }
+
         //Load markup
         var markup = oExtension.markup;
-        if (markup) {
+        if (markup) 
             apf.document.body.insertMarkup(markup);
-        }
 
         var deps = oExtension.deps;
         if (deps) {
@@ -169,8 +175,9 @@ module.exports = ext = {
         }
 
         if (this.currentKeybindings) {
-            var name        = oExtension.path.substr(oExtension.path.lastIndexOf("/") + 1),
-                keyBindings = this.currentKeybindings[name];
+            var name = oExtension.path.substr(oExtension.path.lastIndexOf("/") + 1);
+            var keyBindings = this.currentKeybindings[name];
+
             if (keyBindings)
                 oExtension.currentKeybindings = keyBindings;
         }
@@ -181,35 +188,30 @@ module.exports = ext = {
         ide.dispatchEvent("init." + oExtension.path, {
             ext : oExtension
         });
+        ide.addEventListener("$event.init." + oExtension.path, function(callback){
+            callback.call(this, {ext : oExtension});
+        });
     },
 
     execCommand: function(cmd, data) {
-        cmd = (cmd || "").trim();
+        if (cmd)
+            cmd = cmd.trim();
+        else
+            cmd = "";
+
         var oCmd = this.commandsLut[cmd];
-        if (!oCmd || !oCmd.ext)
+        if (!oCmd || !oCmd.ext) {
             return;
-        var oExt = require(oCmd.ext);
-        if (oExt && typeof oExt[cmd] == "function")
-            return oExt[cmd](data);
-    },
-
-    setLayoutMode : function(mode){
-        return;
-        
-        if (this.currentLayoutMode)
-            this.currentLayoutMode.disable();
-
-        var module = this.extLut[mode];
-        if (!module) {
-            this.currentLayoutMode = null;
-            return false;
         }
 
-        if (!module.inited)
-            this.initExtension(module);
-
-        module.enable();
-        this.currentLayoutMode = module;
+        var oExt = require(oCmd.ext);
+        if (oExt && typeof oExt[cmd] === "function") {
+            require(["ext/console/console"], function(consoleExt) {
+                if (oExt.commands[cmd].msg)
+                    consoleExt.write(oExt.commands[cmd].msg);
+            });
+            return oExt[cmd](data);
+        }
     }
 };
 

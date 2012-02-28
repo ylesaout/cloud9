@@ -4,12 +4,15 @@
  * @copyright 2010, Ajax.org B.V.
  * @license GPLv3 <http://www.gnu.org/licenses/gpl.txt>
  */
- 
+
 define(function(require, exports, module) {
+
+require("apf/elements/debugger");
+require("apf/elements/debughost");
 
 var ide = require("core/ide");
 var ext = require("core/ext");
-var util = require("core/util");
+var settings = require("core/settings");
 var markup = require("text!ext/noderunner/noderunner.xml");
 
 module.exports = ext.register("ext/noderunner/noderunner", {
@@ -28,9 +31,16 @@ module.exports = ext.register("ext/noderunner/noderunner", {
         }
     },
 
+    NODE_VERSION: "auto",
+
     init : function(amlNode){
+        var _self = this;
         ide.addEventListener("socketDisconnect", this.onDisconnect.bind(this));
         ide.addEventListener("socketMessage", this.onMessage.bind(this));
+
+        dbg.addEventListener("break", function(e){
+            ide.dispatchEvent("break", e);
+        });
 
         dbgNode.addEventListener("onsocketfind", function() {
             return ide.socket;
@@ -40,7 +50,7 @@ module.exports = ext.register("ext/noderunner/noderunner", {
         stDebugProcessRunning.addEventListener("deactivate", this.$onDebugProcessDeactivate.bind(this));
 
         ide.addEventListener("consolecommand.run", function(e) {
-            ide.socket.json.send({
+            ide.send({
                 command: "internal-isfile",
                 argv: e.data.argv,
                 cwd: e.data.cwd,
@@ -48,6 +58,11 @@ module.exports = ext.register("ext/noderunner/noderunner", {
             });
             return false;
         });
+
+        ide.addEventListener("loadsettings", function(e){
+            _self.NODE_VERSION = e.model.queryValue("auto/node-version/@version") || "auto";
+        });
+        //require('ext/settings/settings').model
     },
 
     $onDebugProcessActivate : function() {
@@ -55,7 +70,7 @@ module.exports = ext.register("ext/noderunner/noderunner", {
     },
 
     $onDebugProcessDeactivate : function() {
-        dbg.detach();
+        dbg.detach(function(){});
     },
 
     onMessage : function(e) {
@@ -77,17 +92,18 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                 stProcessRunning.deactivate();
                 stDebugProcessRunning.deactivate();
                 break;
-                
+
             case "node-exit-with-error":
                 stProcessRunning.deactivate();
                 stDebugProcessRunning.deactivate();
 
                 // TODO: is this the way to report an errror?
-                txtOutput.addValue("<div class='item console_log' style='font-weight:bold;color:#ff0000'>[C9 Server Exception: " 
+                txtOutput.addValue("<div class='item console_log' style='font-weight:bold;color:#ff0000'>[C9 Server Exception: "
                         + message.errorMessage + "</div>");
                 break;
 
             case "state":
+
                 stDebugProcessRunning.setProperty("active", message.debugClient || message.nodeDebugClient);
                 stProcessRunning.setProperty("active", message.processRunning || message.nodeProcessRunning || message.pythonProcessRunning);
                 dbgNode.setProperty("strip", message.workspaceDir + "/");
@@ -105,12 +121,12 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                         + message.message + "</div>");
                 }
                 else if (message.code !== 6 && message.code != 401 && message.code != 455 && message.code != 456) {
-                    //util.alert("Server Error", "Server Error " 
+                    //util.alert("Server Error", "Server Error "
                     //    + (message.code || ""), message.message);
 
-                    txtConsole.addValue("<div class='item console_log' style='font-weight:bold;color:#ff0000'>[C9 Server Exception " 
+                    txtConsole.addValue("<div class='item console_log' style='font-weight:bold;color:#ff0000'>[C9 Server Exception "
                         + (message.code || "") + "] " + message.message.message + "</div>");
-                    
+
                     apf.ajax("/debug", {
                         method      : "POST",
                         contentType : "application/json",
@@ -123,8 +139,8 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                         })
                     });
                 }
-                
-                ide.socket.json.send({"command": "state"});
+
+                ide.send({"command": "state"});
                 break;
         }
     },
@@ -133,21 +149,20 @@ module.exports = ext.register("ext/noderunner/noderunner", {
         stDebugProcessRunning.deactivate();
     },
 
-    debugChrome : function() {
-        var command = {
-            "command" : "RunDebugChrome",
-            "file"    : ""
-        };
-        ide.socket.json.send(command);
-    },
-
     debug : function() {
         this.$run(true);
     },
 
-    run : function(path, args, debug) {      
-        if (stProcessRunning.active || !stServerConnected.active/* || (ddRunnerSelector.value=='gae' ? '' : !path)*/ || typeof path != "string")
+    run : function(path, args, debug, nodeVersion) {
+        // this is a manual action, so we'll tell that to the debugger
+        dbg.registerManualAttach();
+        if (stProcessRunning.active || !stServerConnected.active || typeof path != "string")
             return false;
+
+        if (nodeVersion == 'default')
+            nodeVersion = "";
+
+        path = path.trim();
 
         var page = ide.getActivePageModel();
         var command = {
@@ -155,23 +170,19 @@ module.exports = ext.register("ext/noderunner/noderunner", {
             "file"    : path.replace(/^\/+/, ""),
             "runner"  : ddRunnerSelector.value, // Explicit addition; trying to affect as less logic as possible for now...
             "args"    : args || "",
+            "version" : nodeVersion || settings.model.queryValue("auto/node-version/@version") || this.NODE_VERSION,
             "env"     : {
                 "C9_SELECTED_FILE": page ? page.getAttribute("path").slice(ide.davPrefix.length) : ""
             }
         };
-        ide.socket.json.send(command);
-
-        if (debug)
-            stDebugProcessRunning.activate();
-
-        stProcessRunning.activate();
+        ide.send(command);
     },
 
     stop : function() {
         if (!stProcessRunning.active)
             return;
 
-        ide.socket.json.send({
+        ide.send({
             "command": "kill",
             "runner"  : ddRunnerSelector.value // Explicit addition; trying to affect as less logic as possible for now...
         });

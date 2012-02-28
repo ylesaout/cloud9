@@ -1,22 +1,21 @@
 /**
  * Zen mode
- * 
+ *
  * @TODO
  * - Disabling the extension doesn't call the disable() function
  * - Exit zen mode when doing any keybinding operation (except openfiles, quicksearch, gotoline)
  * - While animating, disable ability to toggle zen mode (better: cancel and reverse the operation)
- * 
+ *
  * @copyright 2011, Ajax.org B.V.
  * @license GPLv3 <http://www.gnu.org/licenses/gpl.txt>
  */
- 
+
 define(function(require, exports, module) {
 
 require("ext/zen/firmin-all-min");
 
 var ext = require("core/ext");
 var ide = require("core/ide");
-var canon = require("pilot/canon");
 var editors = require("ext/editors/editors");
 var settings = require("ext/settings/settings");
 var markup = require("text!ext/zen/zen.xml");
@@ -28,7 +27,12 @@ module.exports = ext.register("ext/zen/zen", {
     alone    : true,
     type     : ext.GENERAL,
     markup   : markup,
-    skin     : skin,
+    skin     : {
+        id   : "zen",
+        data : skin,
+        "media-path" : ide.staticPrefix + "/style/images/",
+        "icon-path"  : ide.staticPrefix + "/style/icons/"
+    },
     isFocused : false,
     neverShown : true,
 
@@ -95,7 +99,7 @@ module.exports = ext.register("ext/zen/zen", {
         var editor = editors.currentEditor;
         if (editor && editor.ceEditor)
             editor.ceEditor.parentNode.appendChild(btnZenFullscreen);
-            
+
         vbMain.parentNode.appendChild(new apf.vbox({
             anchors: "0 0 0 0",
             id: "vbZen",
@@ -143,17 +147,17 @@ module.exports = ext.register("ext/zen/zen", {
     setupHandleListeners : function() {
         var _self = this;
 
-        this.zenHandleLeft.addEventListener("mousedown", function(e) {
+        apf.addListener(this.zenHandleLeft, "mousedown", function(e) {
             _self.browserWidth = window.innerWidth;
             _self.handleLeftMove = true;
         });
 
-        this.zenHandleRight.addEventListener("mousedown", function(e) {
+        apf.addListener(this.zenHandleRight, "mousedown", function(e) {
             _self.browserWidth = window.innerWidth;
             _self.handleRightMove = true;
         });
 
-        document.addEventListener("mousemove", function(e) {
+        apf.addListener(document, "mousemove", function(e) {
             if (_self.isFocused) {
                 // Now resize those love handles!
                 function afterCalculation() {
@@ -176,7 +180,7 @@ module.exports = ext.register("ext/zen/zen", {
             }
         });
 
-        document.addEventListener("mouseup", function() {
+        apf.addListener(document, "mouseup", function() {
             if (!_self.isFocused)
                 return;
 
@@ -205,7 +209,7 @@ module.exports = ext.register("ext/zen/zen", {
     /**
      * Method invoked to do the actual toggling of zen mode
      * Detects if zened or not
-     * 
+     *
      * @param {amlEvent} e Event from click
      */
     toggleFullscreenZen : function(e) {
@@ -221,7 +225,7 @@ module.exports = ext.register("ext/zen/zen", {
 
     /**
      * Checks if the current browser supports fancy shmancy animations
-     * 
+     *
      * @return {boolean} true if supported, false otherwise
      */
     checkBrowserCssTransforms : function() {
@@ -233,14 +237,15 @@ module.exports = ext.register("ext/zen/zen", {
 
     /**
      * Enters the editor into fullscreen/zen mode
-     * 
+     *
      * @param {boolean} slow Whether to slow down the animation
      */
     enterIntoZenMode : function(slow) {
         var _self = this;
 
         this.saveTabEditorsParentStyles();
-        btnZenFullscreen.setAttribute("class", "full");
+        if (self.btnZenFullscreen)
+            btnZenFullscreen.setAttribute("class", "full");
 
         // Calculates the destination position and dimensions of
         // the animated container
@@ -289,7 +294,8 @@ module.exports = ext.register("ext/zen/zen", {
                 }, 0.5);
 
                 setTimeout(function() {
-                    ceEditor.focus();
+                    if (self.ceEditor)
+                        ceEditor.focus();
                     apf.layout.forceResize(tabEditors.parentNode.$ext);
                 }, 100);
             });
@@ -350,7 +356,7 @@ module.exports = ext.register("ext/zen/zen", {
     /**
      * Returns the editor to its original, non-zen,
      * non-fullscreen state
-     * 
+     *
      * @param {boolean} slow Whether to slow down the animation
      */
     escapeFromZenMode : function(slow) {
@@ -388,12 +394,17 @@ module.exports = ext.register("ext/zen/zen", {
                 _self.animateZen.style.display = "none";
                 // Reset values
                 _self.resetTabEditorsParentStyles();
-                document.body.appendChild(tabEditors.parentNode.$ext);
+
+                apf.document.body.appendChild(tabEditors.parentNode);
+
                 editors.enableTabResizeEvent();
                 apf.layout.forceResize(tabEditors.parentNode.$ext);
 
+                tabEditors.parentNode.$ext.style.position = "absolute";
+
                 setTimeout(function() {
-                    ceEditor.focus();
+                    if (self.ceEditor)
+                        ceEditor.focus();
                     apf.layout.forceResize(tabEditors.parentNode.$ext);
                 }, 100);
             });
@@ -406,11 +417,16 @@ module.exports = ext.register("ext/zen/zen", {
         }
         else {
             this.resetTabEditorsParentStyles();
-            document.body.appendChild(tabEditors.parentNode.$ext);
+
+            apf.document.body.appendChild(tabEditors.parentNode);
+
             editors.enableTabResizeEvent();
             this.animateZen.style.display = "none";
             vbZen.$ext.style.opacity = "0";
             vbZen.hide();
+
+            tabEditors.parentNode.$ext.style.position = "absolute";
+
             apf.layout.forceResize();
             setTimeout(function() {
                 ceEditor.focus();
@@ -458,22 +474,25 @@ module.exports = ext.register("ext/zen/zen", {
         this.animateZen.style.height = teHeight + "px";
         this.animateZen.style.display = "block";
     },
-    
+
     /**
      * Gets the class selectors from the ace_editor element and
      * gets the corresponding bg color for the theme. Then it
      * applies that bg color to the scroller element
-     * 
+     *
      * Otherwise the default background color is grayish and the
      * animation exposes that bg color - making it look bad
-     * 
+     *
      * This is hacked and should probably be in Ace already
      */
     setAceThemeBackground : function() {
         // Set the background color so animating doesn't show a dumb gray background
         var ace_editor = document.getElementsByClassName("ace_editor")[0];
+        if (!ace_editor)
+            return;
+
         var classNames = ace_editor.getAttribute("class").split(" ");
-        for (var cn in classNames) {
+        for (var cn = 0; cn < classNames.length; cn++) {
             if (classNames[cn].indexOf("ace-") === 0) {
                 var selectorString = "." + classNames[cn] + " .ace_scroller";
                 var bgColor = apf.getStyleRule(selectorString, "background-color");
@@ -487,12 +506,32 @@ module.exports = ext.register("ext/zen/zen", {
 
     /**
      * Calls appendChild on the animation window to receive
-     * tabEditors.parentNode - then sets the styles of 
-     * tabEditors.parentNode so it fits properly into the 
+     * tabEditors.parentNode - then sets the styles of
+     * tabEditors.parentNode so it fits properly into the
      * animation window
      */
     placeTabIntoAnimationWindow : function() {
+        var reappendlist = [];
+        var iframelist   = apf.getArrayFromNodelist(
+            tabEditors.parentNode.$ext.getElementsByTagName("iframe"));
+
+        for (var i = 0; i < iframelist.length; i++) {
+            reappendlist[i] = [
+                iframelist[i].parentNode,
+                iframelist[i].nextSibling,
+                document.adoptNode(iframelist[i]),
+            ]
+        }
+
         this.animateZen.appendChild(tabEditors.parentNode.$ext);
+
+        for (var i = reappendlist.length - 1; i >= 0; i--) {
+            reappendlist[i][0].insertBefore(
+                reappendlist[i][2],
+                reappendlist[i][1]);
+        }
+
+        //this.animateZen.appendChild(tabEditors.parentNode.$ext);
         tabEditors.parentNode.$ext.style.width = "100%";
         tabEditors.parentNode.$ext.style.height = "100%";
         tabEditors.parentNode.$ext.style.position = "relative";
@@ -521,17 +560,19 @@ module.exports = ext.register("ext/zen/zen", {
      * Called during the onmouseout event from the zen button
      */
     fadeZenButtonOut : function() {
-        apf.tween.single(btnZenFullscreen, {
-            type     : "opacity",
-            anim     : apf.tween.easeInOutCubic,
-            from     : 1,
-            to       : 0.01,
-            steps    : 8,
-            interval : 20,
-            control  : (this.control = {}),
-            onfinish : function(){
-            }
-        });
+        if (self["btnZenFullscreen"]) {// for the guided tour
+            apf.tween.single(btnZenFullscreen, {
+                type     : "opacity",
+                anim     : apf.tween.easeInOutCubic,
+                from     : 1,
+                to       : 0.01,
+                steps    : 8,
+                interval : 20,
+                control  : (this.control = {}),
+                onfinish : function(){
+                }
+            });
+        } 
     },
 
     enable : function(){

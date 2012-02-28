@@ -9,7 +9,6 @@ define(function(require, exports, module) {
 
 var ide = require("core/ide");
 var ext = require("core/ext");
-var util = require("core/util");
 var fs = require("ext/filesystem/filesystem");
 var settings = require("ext/settings/settings");
 var panels = require("ext/panels/panels");
@@ -21,108 +20,19 @@ module.exports = ext.register("ext/tree/tree", {
     alone            : true,
     type             : ext.GENERAL,
     markup           : markup,
-    visible          : true,
+
+    defaultWidth     : 200,
+
     deps             : [fs],
+
     currentSettings  : [],
     expandedList     : {},
     loading          : false,
     changed          : false,
-    sbIsFaded        : false,
-    ignoreSBMouseOut : false,
-    pendingSBFadeOut : false,
     animControl      : {},
+    nodes            : [],
 
-    onSBMouseOver : function() {
-        if (this.ignoreSBMouseOut)
-            this.pendingSBFadeOut = false;
-        this.showScrollbar();
-    },
-
-    onSBMouseOut : function() {
-        if(this.ignoreSB)
-            return;
-
-        if (this.ignoreSBMouseOut)
-            this.pendingSBFadeOut = true;
-
-        this.hideScrollbar();
-    },
-
-    onSBMouseDown : function() {
-        this.ignoreSBMouseOut = true;
-    },
-
-    onSBMouseUp : function() {
-        if(this.ignoreSB)
-            return;
-
-        this.ignoreSBMouseOut = false;
-        if (this.pendingSBFadeOut) {
-            this.pendingSBFadeOut = false;
-            this.hideScrollbar();
-        }
-    },
-
-    onTreeOver : function() {
-        if (this.ignoreSBMouseOut)
-            this.pendingSBFadeOut = false;
-        this.showScrollbar();
-    },
-
-    onTreeOut : function() {
-        if(this.ignoreSB)
-            return;
-
-        if (this.ignoreSBMouseOut)
-            this.pendingSBFadeOut = true;
-        this.hideScrollbar();
-    },
-
-    showScrollbar : function() {
-        if (this.sbTimer)
-            clearTimeout(this.sbTimer);
-
-        if (this.sbIsFaded) {
-            if (this.animControl.state != apf.tween.STOPPED && this.animControl.stop)
-                this.animControl.stop();
-
-            apf.tween.single(sbTrFiles, {
-                type     : "fade",
-                anim     : apf.tween.EASEIN,
-                from     : 0,
-                to       : 1,
-                steps    : 20,
-                control  : this.animControl
-            });
-
-            this.sbIsFaded = false;
-        }
-    },
-
-    hideScrollbar : function() {
-        if (this.ignoreSBMouseOut)
-            return;
-
-        if (this.sbTimer)
-            clearTimeout(this.sbTimer);
-
-        if (this.sbIsFaded === false) {
-            var _self = this;
-            this.sbTimer = setTimeout(function() {
-                if (_self.animControl.state != apf.tween.STOPPED && _self.animControl.stop)
-                    _self.animControl.stop();
-                apf.tween.single(sbTrFiles, {
-                    type     : "fade",
-                    anim     : apf.tween.EASEOUT,
-                    from     : 1,
-                    to       : 0,
-                    steps    : 20,
-                    control  : _self.animControl
-                });
-                _self.sbIsFaded = true;
-            }, _self.animControl.state != apf.tween.RUNNING ? 20 : 200);
-        }
-    },
+    "default"        : true,
 
     //@todo deprecated?
     getSelectedPath: function() {
@@ -130,28 +40,10 @@ module.exports = ext.register("ext/tree/tree", {
     },
 
     hook : function(){
-        panels.register(this);
-
-        var btn = this.button = navbar.insertBefore(new apf.button({
-            skin    : "mnubtn",
-            state   : "true",
-            value   : "true",
-            "class" : "project_files",
-            caption : "Project Files"
-        }), navbar.firstChild);
-        navbar.current = this;
-
-        var _self = this;
-        btn.addEventListener("mousedown", function(e){
-            var value = this.value;
-            if (navbar.current && (navbar.current != _self || value)) {
-                navbar.current.disable(navbar.current == _self);
-                if (value)
-                    return;
-            }
-
-            panels.initPanel(_self);
-            _self.enable(true);
+        panels.register(this, {
+            position : 1000,
+            caption: "Project Files",
+            "class": "project_files"
         });
     },
 
@@ -159,6 +51,8 @@ module.exports = ext.register("ext/tree/tree", {
         var _self = this;
 
         this.panel = winFilesViewer;
+
+        this.nodes.push(winFilesViewer);
 
         colLeft.addEventListener("hide", function(){
             splitterPanelLeft.hide();
@@ -170,20 +64,27 @@ module.exports = ext.register("ext/tree/tree", {
 
         colLeft.appendChild(winFilesViewer);
 
-        mnuView.appendChild(new apf.divider());
-        mnuView.appendChild(new apf.item({
+        mnuFilesSettings.appendChild(new apf.item({
             id      : "mnuitemHiddenFiles",
             type    : "check",
             caption : "Show Hidden Files",
+            visible : "{trFiles.visible}",
             checked : "[{require('ext/settings/settings').model}::auto/tree/@showhidden]",
             onclick : function(){
                 _self.changed = true;
-                require(["ext/tree/tree", "ext/settings/settings"], function(tree, settings) {
-                    tree.refresh();
-                    settings.save();
-                })
+                (davProject.realWebdav || davProject)
+                    .setAttribute("showhidden", this.checked);
+
+                _self.refresh();
+                settings.save();
             }
         }));
+
+        ide.addEventListener("loadsettings", function(e) {
+            var model = e.model;
+            (davProject.realWebdav || davProject).setAttribute("showhidden",
+                apf.isTrue(model.queryValue('auto/tree/@showhidden')));
+        });
 
         mnuView.appendChild(new apf.divider());
 
@@ -191,8 +92,10 @@ module.exports = ext.register("ext/tree/tree", {
 
         trFiles.addEventListener("afterselect", this.$afterselect = function(e) {
             var settings = require("ext/settings/settings");
-            if (settings.model && trFiles.selected) {
+            if (settings.model && settings.model.data && trFiles.selected) {
                 var settings          = settings.model.data;
+                if (!settings)
+                    return;
                 var treeSelectionNode = settings.selectSingleNode("auto/tree_selection");
                 var nodeSelected      = trFiles.selected.getAttribute("path");
                 var nodeType          = trFiles.selected.getAttribute("type");
@@ -209,7 +112,8 @@ module.exports = ext.register("ext/tree/tree", {
 
         trFiles.addEventListener("afterchoose", this.$afterselect = function(e) {
             var node = this.selected;
-            if (!node || node.tagName != "file" || this.selection.length > 1 || !ide.onLine && !ide.offlineFileSystemSupport) //ide.onLine can be removed after update apf
+            if (!node || node.tagName != "file" || this.selection.length > 1
+              || !ide.onLine && !ide.offlineFileSystemSupport) //ide.onLine can be removed after update apf
                     return;
 
             ide.dispatchEvent("openfile", {doc: ide.createDocument(node)});
@@ -222,14 +126,14 @@ module.exports = ext.register("ext/tree/tree", {
                 filename = args[1].getAttribute("name");
 
             var count = 0;
-            filename.match(/\.(\d+)$/, "") && (count = parseInt(RegExp.$1));
+            filename.match(/\.(\d+)$/, "") && (count = parseInt(RegExp.$1, 10));
             while (args[0].selectSingleNode("node()[@name='" + filename.replace(/'/g, "\\'") + "']")) {
                 filename = filename.replace(/\.(\d+)$/, "") + "." + ++count;
             }
             args[1].setAttribute("newname", filename);
 
             setTimeout(function () {
-                fs.beforeRename(args[1], null, args[0].getAttribute("path").replace(/[\/]+$/, "") + "/" + filename);
+                fs.beforeRename(args[1], null, args[0].getAttribute("path").replace(/[\/]+$/, "") + "/" + filename, true);
                 args[1].removeAttribute("newname");
             });
         });
@@ -280,101 +184,15 @@ module.exports = ext.register("ext/tree/tree", {
             });
         });
 
-
         var cancelWhenOffline = function(){
             if (!ide.onLine && !ide.offlineFileSystemSupport) return false;
-        };
-
-        this.dropTimer;
-//        this.scrollTimer;
-
-        this.onDragStart = function(){
-            if (this.dropTimer)
-                clearTimeout(this.dropTimer);
-
-//            if (this.scrollTimer)
-//                clearTimeout(this.scrollTimer);
-
-            _self.ignoreSB = true;
-
-            cancelWhenOffline();
-        };
-
-        this.onDragStop = function(){
-            if (this.dropTimer)
-                clearTimeout(this.dropTimer);
-
-//            if (this.scrollTimer)
-//                clearTimeout(this.scrollTimer);
-
-            _self.ignoreSB = false;
-
-            _self.hideScrollbar();
-        };
-
-        this.onDragOver = function(data){
-            var _self = this;
-
-            if (this.dropTimer)
-                clearTimeout(this.dropTimer);
-
-//            if (this.scrollTimer)
-//                clearTimeout(this.scrollTimer);
-
-            this.dropTimer = setTimeout(function(){
-                clearTimeout(_self.dropTimer);
-                if(data.target && data.target.getAttribute("type") == "folder") {
-                    trFiles.slideOpen(null, data.target);
-                }
-            }, 1500);
-        };
-
-        this.onDragDrop = function(){
-            if(this.dropTimer)
-                clearTimeout(this.dropTimer);
-
-//            if(this.scrollTimer)
-//                clearTimeout(this.scrollTimer);
-
-            _self.ignoreSB = false;
-
-            cancelWhenOffline();
-        };
-
-        this.onDragOut = function(){
-            var _self = this;
-
-            if(this.dropTimer)
-                clearTimeout(this.dropTimer);
-
-           /* if(this.scrollTimer)
-                clearTimeout(this.scrollTimer);
-
-            this.scrollTimer = setTimeout(function(){
-                clearTimeout(_self.scrollTimer);
-
-                var treeTopPos    = apf.getAbsolutePosition(trFiles.$ext)[1],
-                    treeBottomPos = treeTopPos + trFiles.$ext.offsetHeight,
-                    dragIndPos    = apf.getAbsolutePosition(trFiles.oDrag)[1];
-
-                if (dragIndPos < treeTopPos + 10) {
-                    sbTrFiles.scrollUp();
-                }
-
-                if (dragIndPos > treeBottomPos - 10) {
-                    sbTrFiles.scrollDown();
-                }
-            }, 500);*/
         };
 
         trFiles.addEventListener("beforeadd", cancelWhenOffline);
         trFiles.addEventListener("renamestart", cancelWhenOffline);
         trFiles.addEventListener("beforeremove", cancelWhenOffline);
-        trFiles.addEventListener("dragstart", this.onDragStart);
-        trFiles.addEventListener("dragstop", this.onDragStop);
-        trFiles.addEventListener("dragdrop", this.onDragDrop);
-        trFiles.addEventListener("dragover", this.onDragOver);
-        trFiles.addEventListener("dragout", this.onDragOut);
+        trFiles.addEventListener("dragstart", cancelWhenOffline);
+        trFiles.addEventListener("dragdrop", cancelWhenOffline);
 
         ide.addEventListener("afteroffline", function(e){
             if (!ide.offlineFileSystemSupport) {
@@ -386,6 +204,10 @@ module.exports = ext.register("ext/tree/tree", {
         ide.addEventListener("afteronline", function(e){
             //trFiles.enable();
             //mnuCtxTree.enable();
+        });
+
+        ide.addEventListener("filecallback", function (e) {
+            _self.refresh();
         });
 
         /**** Support for state preservation ****/
@@ -422,8 +244,6 @@ module.exports = ext.register("ext/tree/tree", {
                     trFiles.select(trFiles.$model.queryNode("node()"));
                 }
             };
-
-            davProject.setAttribute("showhidden", "[{require('ext/settings/settings').model}::auto/tree/@showhidden]");
 
             var model = e.model;
             var strSettings = model.queryValue("auto/tree");
@@ -481,7 +301,17 @@ module.exports = ext.register("ext/tree/tree", {
             for (id in _self.expandedList) {
                 try {
                     path = apf.xmlToXpath(_self.expandedList[id], trFiles.xmlRoot);
-                    lut[path] = true;
+                    
+                    // i won't remove the try-catch here cause it might
+                    // be importante, but 'xmlToXpath' doesn't throw as far as I can see
+                    // however; it CAN return 'false' or empty if something happens there
+                    // so:
+                    if (!path) {
+                        delete _self.expandedList[id];
+                    }
+                    else {
+                        lut[path] = true;
+                    }
                 }
                 catch(err){
                     //Node is deleted
@@ -605,34 +435,24 @@ module.exports = ext.register("ext/tree/tree", {
         }
     },
 
-    enable : function(noButton){
-        winFilesViewer.show();
-        colLeft.show();
-        if (!noButton) {
-            this.button.setValue(true);
-            if(navbar.current && (navbar.current != this))
-                navbar.current.disable(false);
-        }
-
-        splitterPanelLeft.show();
-        navbar.current = this;
+    enable : function(){
+        this.nodes.each(function(item){
+            item.enable();
+        });
     },
 
-    disable : function(noButton){
-        if (self.winFilesViewer)
-            winFilesViewer.hide();
-        if (!noButton)
-            this.button.setValue(false);
-
-        splitterPanelLeft.hide();
+    disable : function(){
+        this.nodes.each(function(item){
+            item.disable();
+        });
     },
 
     destroy : function(){
-        davProject.destroy(true, true);
-        mdlFiles.destroy(true, true);
-        trFiles.destroy(true, true);
-
         trFiles.removeEventListener("afterselect", this.$afterselect);
+        this.nodes.each(function(item){
+            item.destroy(true, true);
+        });
+        this.nodes = [];
 
         panels.unregister(this);
     }

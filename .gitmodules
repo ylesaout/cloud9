@@ -37,3 +37,6 @@
 [submodule "support/lib-javadebug"]
 	path = support/lib-javadebug
 	url = https://github.com/ajaxorg/lib-javadebug.git
+[submodule "support/treehugger"]
+	path = support/treehugger
+	url = git://github.com/ajaxorg/treehugger.git

@@ -32,14 +32,20 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         }
     },
 
-    readFile : function (path, callback) {
+    readFile : function (path, callback){
         if (this.webdav)
             this.webdav.read(path, callback);
     },
 
     saveFile : function(path, data, callback) {
-        if (this.webdav)
-            this.webdav.write(path, data, null, callback);
+        if (!this.webdav)
+            return;
+        this.webdav.write(path, data, null, function(data, state, extra) {
+            if ((state == apf.ERROR && extra.status == 400 && extra.retries < 3) || state == apf.TIMEOUT)
+                return extra.tpModule.retry(extra.id);
+
+            callback(data, state, extra);
+        });
     },
 
     list : function(path, callback) {
@@ -60,9 +66,11 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         }
 
         var node = tree.selected;
-        if (!node)
+        if (!node && tree.xmlRoot)
             node = tree.xmlRoot.selectSingleNode("folder");
-        if (node.getAttribute("type") != "folder")
+        if (!node)
+            return;
+        if (node.getAttribute("type") != "folder" && node.tagName != "folder")
             node = node.parentNode;
 
         if (this.webdav) {
@@ -80,8 +88,7 @@ module.exports = ext.register("ext/filesystem/filesystem", {
                 if (exists) {
                     name = prefix + "." + index++;
                     _self.exists(path + "/" + name, test);
-                }
-                else {
+                } else {
                     tree.focus();
                     _self.webdav.exec("mkdir", [path, name], function(data) {
                         // @todo: in case of error, show nice alert dialog
@@ -89,11 +96,12 @@ module.exports = ext.register("ext/filesystem/filesystem", {
                             throw Error;
 
                         var strXml = data.match(new RegExp(("(<folder path='" + path
-                            + "/" + name + "'.*?>)").replace(/\//g, "\\/")))[1];
+                                + "/" + name + "'.*?>)").replace(/\//g, "\\/")))[1];
 
                         tree.slideOpen(null, node, true, function(data, flag, extra){
                             var folder;
-                            /* empty data means it didn't trigger <insert> binding, therefore the node was expanded already */
+                            // empty data means it didn't trigger <insert> binding,
+                            // therefore the node was expanded already
                             if (!data)
                                 tree.add(apf.getXml(strXml), node);
 
@@ -118,19 +126,20 @@ module.exports = ext.register("ext/filesystem/filesystem", {
             node = trFiles.selected;
             if (!node)
                 node = trFiles.xmlRoot.selectSingleNode("folder");
-            if (node.getAttribute("type") != "folder")
+            if (node.getAttribute("type") != "folder" && node.tagName != "folder")
                 node = node.parentNode;
         }
         else {
-            node = apf.getXml('<file newfile="1" type="file" size="" changed="1" name="Untitled.txt" '
-                + 'contenttype="text/plain; charset=utf-8" modifieddate="" creationdate="" '
-                + 'lockable="false" hidden="false" executable="false"></file>');
+            node = apf.getXml('<file newfile="1" type="file" size="" changed="1" '
+                + 'name="Untitled.txt" contenttype="text/plain; charset=utf-8" '
+                + 'modifieddate="" creationdate="" lockable="false" hidden="false" '
+                + 'executable="false"></file>');
         }
 
         if (this.webdav) {
-            var prefix = filename ? filename : "Untitled.txt";
+            var prefix = filename ? filename : "Untitled";
 
-            if (!newFile)
+            if(!newFile)
                 trFiles.focus();
 
             var _self = this,
@@ -149,7 +158,8 @@ module.exports = ext.register("ext/filesystem/filesystem", {
                 }
                 else {
                     if (!newFile) {
-                        var file, both = 0;
+                        var file
+                        var both = 0;
                         function done(){
                             if (both == 2) {
                                 file = apf.xmldb.appendChild(node, file);
@@ -158,20 +168,26 @@ module.exports = ext.register("ext/filesystem/filesystem", {
                             }
                         }
 
-                        trFiles.slideOpen(null, node, true, function() {
+                        trFiles.slideOpen(null, node, true, function(){
                             both++;
                             done();
                         });
 
                         _self.webdav.exec("create", [path, filename], function(data) {
                             _self.webdav.exec("readdir", [path], function(data) {
-                                // @todo: in case of error, show nice alert dialog
-                                if (data instanceof Error)
-                                    throw Error;
+                                if (data instanceof Error) {
+                                    // @todo: should we display the error message in the Error object too?
+                                    return util.alert("Error", "File '" + filename + "' could not be created",
+                                        "An error occurred while creating a new file, please try again.");
+                                }
 
-                                var strXml = data.match(new RegExp(("(<file path='" + path +
-                                    "/" + filename + "'.*?>)").replace(/\//g, "\\/")))[1];
-                                file = apf.getXml(strXml);
+                                var m = data.match(new RegExp(("(<file path='" + path +
+                                    "/" + filename + "'.*?>)").replace(/\//g, "\\/")))
+                                if (!m) {
+                                    return util.alert("Error", "File '" + filename + "' could not be created",
+                                        "An error occurred while creating a new file, please try again.");
+                                }
+                                file = apf.getXml(m[1]);
 
                                 both++;
                                 done();
@@ -181,7 +197,7 @@ module.exports = ext.register("ext/filesystem/filesystem", {
                     else {
                         node.setAttribute("name", filename);
                         node.setAttribute("path", path + "/" + filename);
-                        ide.dispatchEvent("openfile", {doc: ide.createDocument(node), type: "newfile"});
+                        ide.dispatchEvent("openfile", {doc: ide.createDocument(node), type:"newfile"});
                     }
                 }
             };
@@ -200,10 +216,9 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         return match !== null && match[0] == name;
     },
 
-    beforeRename : function(node, name, newPath) {
+    beforeRename : function(node, name, newPath, isCopyAction) {
         var path = node.getAttribute("path");
         var page = tabEditors.getPage(path);
-        var match;
 
         if (name)
             newPath = path.replace(/^(.*\/)[^\/]+$/, "$1" + name);
@@ -213,7 +228,9 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         node.setAttribute("oldpath", node.getAttribute("path"));
         node.setAttribute("path", newPath);
         apf.xmldb.setAttribute(node, "name", name);
-        if (page)
+
+        // when this is a copy action, then we don't want this to happen
+        if (page && !isCopyAction)
             page.setAttribute("id", newPath);
 
         var childNodes = node.childNodes;
@@ -221,9 +238,12 @@ module.exports = ext.register("ext/filesystem/filesystem", {
 
         for (var i = 0; i < length; ++i) {
             var childNode = childNodes[i];
+            if(!childNode || childNode.nodeType != 1)
+                continue;
+
             // The 'name' variable is redeclared here for some fucked up reason.
             // The problem is that we are reusing that variable below. If the author
-            // of this would be so kind to fix this code as soon as he sees this 
+            // of this would be so kind to fix this code as soon as he sees this
             // comment, I would be eternally grateful. Sergi.
             var name = childNode.getAttribute("name");
 
@@ -231,7 +251,7 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         }
         ide.dispatchEvent("updatefile", {
             path: path,
-            name: name.input,
+            filename: name && name.input,
             xmlNode: node
         });
     },
@@ -245,7 +265,8 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         // Check the newpath doesn't exists first
         // if (tree.getModel().queryNode("//node()[@path=\""+ newpath +"\"]")) {
         //             webdav.$undoFlag = true;
-        //             util.alert("Error", "Unable to move", "Couldn't move to this destination because there's already a node with the same name", function() {
+        //             util.alert("Error", "Unable to move", "Couldn't move to this "
+        //               + "destination because there's already a node with the same name", function() {
         //                 tree.getActionTracker().undo();
         //                 tree.enable();
         //             });
@@ -283,7 +304,7 @@ module.exports = ext.register("ext/filesystem/filesystem", {
 
     /**** Init ****/
 
-    init : function(amlNode) {
+    init : function(amlNode){
         this.model = new apf.model();
         this.model.setAttribute("whitespace", false);
 
@@ -311,11 +332,8 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         });
 
         var _self = this;
-        /*ide.addEventListener("afteronline", function(){
-            console.log("ONLINE, INITIAL DATA IN");
-            ide.removeEventListener("afteronline", arguments.callee);
-        });*/
-        _self.model.load("<data><folder type='folder' name='" + ide.projectName + "' path='" + ide.davPrefix + "' root='1'/></data>");
+        _self.model.load("<data><folder type='folder' name='" + ide.projectName
+            + "' path='" + ide.davPrefix + "' root='1'/></data>");
 
         var dav_url = location.href.replace(location.pathname + location.hash, "") + ide.davPrefix;
         this.webdav = new apf.webdav({
@@ -325,18 +343,9 @@ module.exports = ext.register("ext/filesystem/filesystem", {
                 ide.dispatchEvent("authrequired");
             }
         });
-        var url = "{davProject.getroot()}";
-
-        /*this.webdav.$undoFlag = false;
-        this.webdav.addEventListener("error", function(event) {
-            return util.alert("Webdav Exception", event.error.type || "", event.error.message, function() {
-                trFiles.getActionTracker().undo();
-                _self.webdav.$undoFlag = true;
-            });
-        });*/
 
         function openHandler(e) {
-            ide.socket.json.send({
+            ide.send({
                 command: "internal-isfile",
                 argv: e.data.argv,
                 cwd: e.data.cwd,
@@ -351,6 +360,7 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         ide.addEventListener("openfile", function(e){
             var doc  = e.doc;
             var node = doc.getNode();
+            var editor = e.doc.$page && e.doc.$page.$editor;
 
             apf.xmldb.setAttribute(node, "loading", "true");
             ide.addEventListener("afteropenfile", function(e) {
@@ -361,60 +371,36 @@ module.exports = ext.register("ext/filesystem/filesystem", {
             });
 
             if (doc.hasValue()) {
-                ide.dispatchEvent("afteropenfile", {doc: doc, node: node});
+                ide.dispatchEvent("afteropenfile", {doc: doc, node: node, editor: editor});
                 return;
             }
 
-            if (!e.type || e.type != "newfile") {
+            // do we have a value in cache, then use that one
+            if (doc.cachedValue) {
+                doc.setValue(doc.cachedValue);
+                delete doc.cachedValue;
+                ide.dispatchEvent("afteropenfile", {doc: doc, node: node, editor: editor});
+            }
+            // if we're creating a new file then we'll fill the doc with nah dah
+            else if ((e.type && e.type === "newfile") || Number(node.getAttribute("newfile") || 0) === 1) {
+                doc.setValue("");
+                ide.dispatchEvent("afteropenfile", {doc: doc, node: node, editor: editor});
+            }
+            // otherwise go on loading
+            else {
                 // add a way to hook into loading of files
-                if (ide.dispatchEvent("readfile", {doc: doc, node: node}) == false)
+                if (ide.dispatchEvent("readfile", {doc: doc, node: node}) === false)
                     return;
 
-                /* OFFLINE IMPLEMENTATION
-                // add a way to hook into loading of files
-                if (ide.dispatchEvent("readfile", {doc: doc, node: node}) == false)
-                    return;
-
-                var path = node.getAttribute("path");
-
-                var callback = function(data, state, extra) {
-                    if (state == apf.OFFLINE) {
-                        ide.addEventListener("afteronline", function(e) {
-                            fs.readFile(path, callback);
-                            ide.removeEventListener("afteronline", arguments.callee);
-                        });
-                    }
-                    else if (state != apf.SUCCESS) {
-                        if (extra.status == 404) {
-                            ide.dispatchEvent("filenotfound", {
-                                node : node,
-                                url  : extra.url,
-                                path : path
-                            });
-                        }
-                    }
-                    else {
-                        doc.setValue(data);
-                        ide.dispatchEvent("afteropenfile", {doc: doc, node: node});
-                    }
-                };
-
-                fs.readFile(path, callback);
-                */
                 var path = node.getAttribute("path");
 
                 /**
-                 * This callback is executed when the file is read, we need to check
-                 * the current state of online/offline
+                 * Callback function after we retrieve response from jsdav
                  */
                 var readfileCallback = function(data, state, extra) {
-                    if (state == apf.OFFLINE) {
-                        ide.addEventListener("afteronline", function(e) {
-                            fs.readFile(path, readfileCallback);
-                            ide.removeEventListener("afteronline", arguments.callee);
-                        });
-                    }
-                    else if (state != apf.SUCCESS) {
+                    // verify if the request succeeded
+                    if (state != apf.SUCCESS) {
+                        // 404's should give a file not found, but what about others?
                         if (extra.status == 404) {
                             ide.dispatchEvent("filenotfound", {
                                 node : node,
@@ -424,16 +410,24 @@ module.exports = ext.register("ext/filesystem/filesystem", {
                         }
                     }
                     else {
+                        // populate the document
                         doc.setValue(data);
-                        ide.dispatchEvent("afteropenfile", {doc: doc, node: node});
+                        // fire event
+                        ide.dispatchEvent("afteropenfile", { doc: doc, node: node, editor: editor });
                     }
                 };
-
-                fs.readFile(path, readfileCallback);
-            }
-            else {
-                doc.setValue("empty file.");
-                ide.dispatchEvent("afteropenfile", {doc: doc, node: node});
+                
+                // if we're not online, we'll add an event handler that listens to the socket connecting (or the ping or so)
+                if (!ide.onLine) {
+                    var afterOnlineHandler = function () {
+                        fs.readFile(path, readfileCallback);
+                        ide.removeEventListener("afteronline", afterOnlineHandler);
+                    };
+                    ide.addEventListener("afteronline", afterOnlineHandler);
+                }
+                else {
+                    fs.readFile(path, readfileCallback);
+                }
             }
         });
 
@@ -452,16 +446,14 @@ module.exports = ext.register("ext/filesystem/filesystem", {
                         fs.readFile(path, readfileCallback);
                         ide.removeEventListener("afteronline", arguments.callee);
                     });
-                }
-                else if (state != apf.SUCCESS) {
+                } else if (state != apf.SUCCESS) {
                     if (extra.status == 404)
                         ide.dispatchEvent("filenotfound", {
                             node : node,
                             url  : extra.url,
                             path : path
                         });
-                }
-                else {
+                } else {
                    ide.dispatchEvent("afterreload", {doc : doc, data : data});
                 }
             };
@@ -470,9 +462,11 @@ module.exports = ext.register("ext/filesystem/filesystem", {
         });
     },
 
-    enable : function(){},
+    enable : function(){
+    },
 
-    disable : function(){},
+    disable : function(){
+    },
 
     destroy : function(){
         this.webdav.destroy(true, true);

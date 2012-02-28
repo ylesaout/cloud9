@@ -10,7 +10,6 @@ var ide  = require("core/ide");
 var ext  = require("core/ext");
 var util = require("core/util");
 var fs   = require("ext/filesystem/filesystem");
-var tree = require("ext/tree/tree");
 
 var MAX_UPLOAD_SIZE = 52428800;
 var MAX_OPENFILE_SIZE = 2097152;
@@ -21,15 +20,12 @@ module.exports = ext.register("ext/dragdrop/dragdrop", {
     name        : "Dragdrop",
     alone       : true,
     type        : ext.GENERAL,
-    deps        : [tree],
     
     nodes: [],
         
     init: function() {
-        //if (!apf.hasDragAndDrop)
-        //    return;
+        var _self  = this;
 
-        this.nodes.push(trFiles.$ext, tabEditors.$ext);
         var dropbox = document.createElement("div");
         apf.setStyleClass(dropbox, "draganddrop");
         
@@ -37,7 +33,7 @@ module.exports = ext.register("ext/dragdrop/dragdrop", {
         label.textContent = "Drop files here to upload";
         dropbox.appendChild(label);
         
-        this.nodes.forEach(function(holder) {
+        function decorateNode(holder) {
             dropbox = holder.dropbox = dropbox.cloneNode(true);
             holder.appendChild(dropbox);
             
@@ -48,9 +44,17 @@ module.exports = ext.register("ext/dragdrop/dragdrop", {
             ["dragexit", "dragover"].forEach(function(e) {
                 dropbox.addEventListener(e, noopHandler, false);
             });
+        }
+        
+        ide.addEventListener("init.ext/editors/editors", function(){
+            _self.nodes.push(tabEditors.$ext);
+            decorateNode(tabEditors.$ext);
         });
         
-        var _self  = this;
+        ide.addEventListener("init.ext/tree/tree", function(){
+            _self.nodes.push(trFiles.$ext);
+            decorateNode(trFiles.$ext);
+        });
         
         this.dragStateEvent = {"dragenter": dragEnter};
         
@@ -111,6 +115,7 @@ module.exports = ext.register("ext/dragdrop/dragdrop", {
         };
             
         this.StatusBar.$init();
+        
         apf.addEventListener("http.uploadprogress", this.onProgress.bind(this));
     },
     
@@ -190,7 +195,7 @@ module.exports = ext.register("ext/dragdrop/dragdrop", {
         if (!node)
             node = trFiles.xmlRoot.selectSingleNode("folder");
             
-        if (node.getAttribute("type") != "folder")
+        if (node.getAttribute("type") != "folder" && node.tagName != "folder")
             node = node.parentNode;
             
         var path     = node.getAttribute("path");
@@ -242,8 +247,12 @@ module.exports = ext.register("ext/dragdrop/dragdrop", {
                 }
                 
                 var strXml = data.match(new RegExp(("(<file path='" + path +
-                    "/" + filename + "'.*?>)").replace(/\//g, "\\/")))[1];
-
+                    "/" + filename + "'.*?>)").replace(/\//g, "\\/")));
+                
+                if(!strXml)
+                    next();
+                    
+                strXml = strXml[1]
                 var oXml = apf.xmldb.appendChild(node, apf.getXml(strXml));
 
                 trFiles.select(oXml);
