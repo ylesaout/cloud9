@@ -145,6 +145,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
             jvmInstance.on("err", sender("stderr"));
 
             _self.instance = jvmInstance;
+            _self.workspace.getExt("state").publishState();
             _self.ide.broadcast(JSON.stringify({"type": "node-start"}), _self.name);
             jvmInstance.start();
 
@@ -152,6 +153,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
                 _self.ide.broadcast(JSON.stringify({"type": "node-exit"}), _self.name);
                 _self.debugClient = false;
                 delete _self.instance;
+                _self.workspace.getExt("state").publishState();
             });
         }
 
