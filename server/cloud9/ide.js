@@ -113,6 +113,7 @@ Ide.DEFAULT_PLUGINS = [
     "ext/help/help",
     //"ext/ftp/ftp",
     "ext/code/code",
+    "ext/statusbar/statusbar",
     "ext/imgview/imgview",
     //"ext/preview/preview",
     "ext/extmgr/extmgr",
@@ -121,6 +122,7 @@ Ide.DEFAULT_PLUGINS = [
     "ext/debugger/debugger", //Add location rule
     "ext/noderunner/noderunner", //Add location rule
     "ext/console/console",
+    "ext/consolehints/consolehints",
     "ext/tabbehaviors/tabbehaviors",
     "ext/tabsessions/tabsessions",
     "ext/keybindings/keybindings",
@@ -141,7 +143,10 @@ Ide.DEFAULT_PLUGINS = [
     "ext/jslanguage/jslanguage",
     "ext/javalanguage/javalanguage",
     "ext/autotest/autotest",
-    "ext/tabsessions/tabsessions"
+    "ext/tabsessions/tabsessions",
+    "ext/closeconfirmation/closeconfirmation",
+    "ext/codetools/codetools",
+    "ext/colorpicker/colorpicker"
     //"ext/acebugs/acebugs"
 ];
 
@@ -332,10 +337,17 @@ exports.DEFAULT_DAVPLUGINS = ["auth", "codesearch", "filelist", "filesearch"];
     };
 
     this.broadcast = function(msg, scope) {
-        // TODO check permissions
-        for (var username in this.$users) {
-            var user = this.$users[username];
-            user.broadcast(msg, scope);
+        try {
+            // TODO check permissions
+            for (var username in this.$users) {
+                var user = this.$users[username];
+                user.broadcast(msg, scope);
+            }
+        }
+        catch (e) {
+            var ex = new Error("Stack overflow just happened");
+            ex.original = e;
+            throw ex;
         }
     };
 
