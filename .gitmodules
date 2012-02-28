@@ -31,12 +31,12 @@
 [submodule "support/uglify-js"]
 	path = support/uglify-js
 	url = https://github.com/ajaxorg/UglifyJS.git
-[submodule "support/jvm-run"]
-	path = support/jvm-run
-	url = https://github.com/ajaxorg/javarunvm.git
-[submodule "support/lib-javadebug"]
-	path = support/lib-javadebug
-	url = https://github.com/ajaxorg/lib-javadebug.git
 [submodule "support/treehugger"]
 	path = support/treehugger
 	url = git://github.com/ajaxorg/treehugger.git
+[submodule "support/jvm-run"]
+	path = support/jvm-run
+	url = git@github.com:ajaxorg/javarunvm.git
+[submodule "support/lib-javadebug"]
+	path = support/lib-javadebug
+	url = git@github.com:ajaxorg/lib-javadebug.git
