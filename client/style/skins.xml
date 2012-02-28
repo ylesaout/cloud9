@@ -2967,11 +2967,11 @@
         }
 
         .noscrollbar .headings {
-    	    margin : -21px 1px 0 0;
-		}
-		.noscrollbar .datagrid{
-		    background : transparant;
-		}
+            margin : -21px 1px 0 0;
+        }
+        .noscrollbar .datagrid{
+            background : transparant;
+        }
 
         .datagrid .headings div{
             background : -webkit-gradient(linear,left bottom,left top,color-stop(0, rgb(229,229,229)),color-stop(1, rgb(248,248,248)));
@@ -3392,7 +3392,7 @@
         }
     ]]></a:style>
     <a:style condition="apf.isWin">
-    	.datagrid .headings{
+        .datagrid .headings{
             margin : -20px 17px 0 0;
         }
     </a:style>
@@ -3442,8 +3442,8 @@
         }
 
         .datagrid div.records .treecell strong {
-			top : 0px;
-		}
+            top : 0px;
+        }
 
         .draggrid .treecell .iconCell,
         .datagrid .records span.treecell .iconCell {
@@ -4556,26 +4556,26 @@
     ]]></a:style>
     <a:style condition="apf.isIE6">
         .frame {
-    	    height: 1%;
-    	}
+            height: 1%;
+        }
     </a:style>
     <a:style condition="!apf.isIE">
-    	.frame .legend{
-    	    margin : 5px 0 2px -3px;
-    	}
+        .frame .legend{
+            margin : 5px 0 2px -3px;
+        }
     </a:style>
     <a:style condition="apf.isWebkit">
-    	.frame .legend{
-    	    height:15px
-    	}
+        .frame .legend{
+            height:15px
+        }
     </a:style>
     <a:style condition="apf.isIE &gt; 7">
         .frame {
             padding-top : 10px;
         }
         .frame .legend{
-    	    margin : -15px 0 2px -3px;
-    	}
+            margin : -15px 0 2px -3px;
+        }
     </a:style>
     <a:style condition="apf.isChrome"><![CDATA[
         .frame {
@@ -7681,11 +7681,11 @@
     .tab_console .btncontainer .btntab .tab_console_title {
         overflow : hidden;
         padding  : 0 0 0 0;
-		-moz-user-select: -moz-none;
-	    -khtml-user-select: none;
-	    -webkit-user-select: none;
-	    -o-user-select: none;
-	    user-select: none;
+        -moz-user-select: -moz-none;
+        -khtml-user-select: none;
+        -webkit-user-select: none;
+        -o-user-select: none;
+        user-select: none;
     }
 
     .tab_console .btncontainer .btntab.btnclose .tab_console_title {

@@ -22,11 +22,11 @@ module.exports = ext.register("ext/quicksearch/quicksearch", {
     dev     : "Ajax.org",
     type    : ext.GENERAL,
     alone   : true,
-    skin     : {
-        id   : "quicksearch",
-        data : skin,
-        "icon-path" : ide.staticPrefix + "/ext/quicksearch/icons/"
-    },
+    skin     : {
+        id   : "quicksearch",
+        data : skin,
+        "icon-path" : ide.staticPrefix + "/ext/quicksearch/icons/"
+    },
     markup  : markup,
     commands : {
         "quicksearch": {hint: "quickly search for a string inside the active document, without further options (see 'search')"},

@@ -506,4 +506,3 @@ module.exports = ext.register("ext/console/console", {
     }
 });
 });
-

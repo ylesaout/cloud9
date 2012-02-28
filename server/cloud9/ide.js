@@ -361,4 +361,3 @@ exports.DEFAULT_DAVPLUGINS = ["auth", "codesearch", "filelist", "filesearch"];
         this.workspace.dispose(callback);
     };
 }).call(Ide.prototype);
-

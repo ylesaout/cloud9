@@ -105,7 +105,7 @@ module.exports = ext.register("ext/noderunner/noderunner", {
             case "state":
 
                 stDebugProcessRunning.setProperty("active", message.debugClient || message.nodeDebugClient);
-                stProcessRunning.setProperty("active", message.processRunning || message.nodeProcessRunning || message.pythonProcessRunning);
+                stProcessRunning.setProperty("active", message.processRunning || message.nodeProcessRunning || message.pythonProcessRunning || message.javaProcessRunning);
                 dbgNode.setProperty("strip", message.workspaceDir + "/");
                 ide.dispatchEvent("noderunnerready");
                 break;
@@ -182,7 +182,7 @@ module.exports = ext.register("ext/noderunner/noderunner", {
         var command = {
             "command" : apf.isTrue(debug) ? "RunDebugBrk" : "Run",
             "file"    : path.replace(/^\/+/, ""),
-            "runner"  : "node",
+            "runner"  : ddRunnerSelector.value, // Explicit addition; trying to affect as less logic as possible for now...
             "args"    : args || "",
             "version" : nodeVersion || settings.model.queryValue("auto/node-version/@version") || this.NODE_VERSION,
             "env"     : {
@@ -198,7 +198,7 @@ module.exports = ext.register("ext/noderunner/noderunner", {
 
         ide.send({
             "command": "kill",
-            "runner"  : "node"
+            "runner"  : ddRunnerSelector.value // Explicit addition; trying to affect as less logic as possible for now...
         });
     },
 

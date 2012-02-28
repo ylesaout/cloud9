@@ -14,8 +14,8 @@ var User = function (uid, permissions, data) {
     this.permissions = permissions;
     this.data = data;
     this.clients = [];
-    this.last_message_time = new Date().getTime();
     this.$server_exclude = {};
+    this.flagged_for_removal = false;
 };
 
 sys.inherits(User, EventEmitter);
@@ -58,7 +58,7 @@ User.VISITOR_PERMISSIONS = {
 };
 
 (function() {
-    
+
     this.setPermissions = function(permissions) {
         this.$server_exclude = util.arrayToMap(permissions.server_exclude.split("|"));
         if (this.permissions === permissions)
@@ -67,24 +67,24 @@ User.VISITOR_PERMISSIONS = {
         this.permissions = permissions;
         this.emit("changePermissions", this);
     };
-    
+
     this.getPermissions = function(permissions) {
         return this.permissions;
     };
-    
+
     this.addClientConnection = function(client, message) {
         var id = client.id;
         if (this.clients[id] === client)
             return;
-            
+
         this.clients[id] = client;
         this.onClientCountChange();
-        
+
         var _self = this;
         client.on("message", function(message) {
             _self.onClientMessage(message, client);
         });
-        
+
         client.on("disconnect", function() {
             _self.emit("disconnectClient", {
                 user: _self,
@@ -93,11 +93,11 @@ User.VISITOR_PERMISSIONS = {
             delete _self.clients[client.id];
             _self.onClientCountChange();
         });
-        
+
         if (message)
             _self.onClientMessage(message, client);         
     };
-    
+
     this.onClientMessage = function(message, client) {
         try {
             if (typeof message == "string")
@@ -113,17 +113,17 @@ User.VISITOR_PERMISSIONS = {
             client: client
         });
     };
-    
+
     this.onClientCountChange = function() {
         var count = Object.keys(this.clients).length;
         this.emit("clientCountChange", count);
-        
-        if (count == 0) {
+
+        if (count === 0) {
             this.dconn_time = new Date().getTime();
             this.emit("disconnectUser", this);
         }
     };
-    
+
     this.error = function(description, code, message, client) {
         //console.log("Socket error: " + description, new Error().stack);
         var sid = (message || {}).sid || -1;
@@ -140,7 +140,7 @@ User.VISITOR_PERMISSIONS = {
         else
             this.broadcast(error);
     };
-    
+
     this.broadcast = function(msg, scope) {
         if (scope && this.$server_exclude[scope])
             return;
@@ -149,7 +149,7 @@ User.VISITOR_PERMISSIONS = {
         for (var id in this.clients)
             this.clients[id].send(msg, function() {});
     };
-    
+
 }).call(User.prototype);
 
 module.exports = User;

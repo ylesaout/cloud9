@@ -37,3 +37,9 @@
 [submodule "support/jvm_features"]
 	path = support/jvm_features
 	url = git@github.com:ajaxorg/jvm_features.git
+[submodule "support/jvm-run"]
+	path = support/jvm-run
+	url = git@github.com:ajaxorg/javarunvm.git
+[submodule "support/lib-javadebug"]
+	path = support/lib-javadebug
+	url = git@github.com:ajaxorg/lib-javadebug.git

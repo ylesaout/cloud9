@@ -173,6 +173,11 @@ module.exports = ext.register("ext/run/run", {
 //            var pos  = apf.getAbsolutePosition(btnRunCommands.$ext);
 //            self[btnRunCommands.submenu].display(pos[0]-1, pos[1]-11, false, btnRunCommands)
         }
+        
+        if(debug) {
+            var pos  = apf.getAbsolutePosition(btnRunCommands.$ext);
+            self[btnRunCommands.submenu].display(pos[0]-1, pos[1]-11, false, btnRunCommands)
+        }
     },
 
     $updateMenu : function() {
