@@ -111,8 +111,9 @@ sys.inherits(JVMFeatures, Plugin);
                     _self.sendResult(0, cmd + ":" + subCmd, data.body);
                 });
                 break;
+
             case "hierarchy":
-              this.eclipseClient.hierarchy(message.project, message.file, message.offset,
+              this.eclipseClient.hierarchy(message.project, message.file, message.offset, message.type,
                   function(data) {
                     if (! data.success)
                       return _self.$error("Could not execute hierarchy request", 9);

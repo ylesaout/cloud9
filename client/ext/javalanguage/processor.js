@@ -325,6 +325,8 @@ var saveFileAndDo = function(sender, callback) {
     };
 
     this.hierarchy = function(doc, cursorPos, callback) {
+        console.log("hierarchy called");
+
         var _self = this;
         var offset = calculateOffset(doc, cursorPos);
         var command = {
@@ -335,13 +337,19 @@ var saveFileAndDo = function(sender, callback) {
           offset: offset
         };
 
-        console.log("hierarchy called");
+        var line = doc.getLine(cursorPos.row);
+        var identifier = completeUtil.retrieveFullIdentifier(line, cursorPos.column);
+        if (identifier)
+          command.type = identifier.text;
 
         var doGetHierarchy = function() {
           _self.proxy.once("result", "jvmfeatures:hierarchy", function(message) {
             console.log("hierarchy_result");
-            console.log(message.body);
-            callback(convertToHierarchyTree(doc, message.body));
+            // Super and subtype hierarchies roots
+            var result = message.body;
+            console.log(result);
+            callback([convertToHierarchyTree(doc, result[0]),
+                convertToHierarchyTree(doc, result[1])]);
           });
           _self.proxy.send(command);
         };
@@ -353,8 +361,8 @@ var saveFileAndDo = function(sender, callback) {
         return false;
     };
 
-    this.analyze = function(doc, fullAst /* null */, callback) {
-        var _self = this;
+    // this.analyze = function(doc, fullAst /* null */, callback) {
+        /*var _self = this;
         var command = {
           command : "jvmfeatures",
           subcommand : "analyze_file",
@@ -386,7 +394,7 @@ var saveFileAndDo = function(sender, callback) {
         };
 
         saveFileAndDo(this.sender, doAnalyzeFile);
-    };
+    };*/
 
     this.codeFormat = function(doc, callback) {
         var _self = this;

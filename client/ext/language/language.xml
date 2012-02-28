@@ -66,6 +66,14 @@
             <a:toolbar>
                 <a:bar height = "36">
                     <a:hbox edge="5">
+                        <a:button
+                          icon     = "hier_supertype.png"
+                          tooltip  = "Supertypes Hierarchy"
+                          onclick  = "require('ext/language/hierarchy').refreshHierarchy(0)" />
+                        <a:button
+                          icon     = "hier_subtype.png"
+                          tooltip = "Subtypes Hierarchy"
+                          onclick  = "require('ext/language/hierarchy').refreshHierarchy(1)" />
                         <a:textbox 
                           id              = "tbHierarchySearch"
                           realtime        = "true"

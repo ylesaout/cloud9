@@ -12,7 +12,8 @@ module.exports = {
         var _self = this;
         
         worker.on("hierarchy", function(event) {
-            _self.renderHierarchy(event);
+            _self.cachedEvent = event;
+            _self.renderHierarchy(event, 0);
         });
 
         function triggerHierarchy() {
@@ -71,10 +72,15 @@ module.exports = {
         return xmlS.join('');
     },
 
-    renderHierarchy : function(event) {
+    refreshHierarchy: function(hierId) {
+        this.renderHierarchy(this.cachedEvent, hierId);
+    },
+
+    renderHierarchy : function(event, hierId) {
         console.log("Rendering heirarchy");
         var ace = editors.currentEditor.ceEditor.$editor;
-        var hierarchy = event.data;
+        var hierarchies = event.data;
+        var hierarchy = hierarchies[hierId];
 
         barHierarchy.setAttribute('visible', true);
         var selected = [];
