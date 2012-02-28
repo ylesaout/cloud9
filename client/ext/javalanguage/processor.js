@@ -361,8 +361,8 @@ var saveFileAndDo = function(sender, callback) {
         return false;
     };
 
-    // this.analyze = function(doc, fullAst /* null */, callback) {
-        /*var _self = this;
+     this.analyze = function(doc, fullAst /* null */, callback) {
+        var _self = this;
         var command = {
           command : "jvmfeatures",
           subcommand : "analyze_file",
@@ -394,7 +394,7 @@ var saveFileAndDo = function(sender, callback) {
         };
 
         saveFileAndDo(this.sender, doAnalyzeFile);
-    };*/
+    };
 
     this.codeFormat = function(doc, callback) {
         var _self = this;
