@@ -150,6 +150,7 @@ module.exports = ext.register("ext/code/code", {
     nodes : [],
 
     fileExtensions : Object.keys(contentTypes),
+    supportedModes: Object.keys(SupportedModes),
     commandManager : new CommandManager(useragent.isMac ? "mac" : "win", defaultCommands),
 
     getState : function(doc) {
@@ -341,7 +342,7 @@ module.exports = ext.register("ext/code/code", {
 
             if (e.doc && e.doc.editor && e.doc.editor.ceEditor) {
                 // check if there is a scriptid, if not check if the file is somewhere in the stack
-                if (mdlDbgStack && mdlDbgStack.data && e.node
+                if (typeof mdlDbgStack != "undefined" && mdlDbgStack.data && e.node
                   && (!e.node.hasAttribute("scriptid") || !e.node.getAttribute("scriptid"))
                   && e.node.hasAttribute("scriptname") && e.node.getAttribute("scriptname")) {
                     var nodes = mdlDbgStack.data.selectNodes("//frame[@script='" + e.node.getAttribute("scriptname").replace(ide.workspaceDir + "/", "") + "']");
@@ -369,7 +370,24 @@ module.exports = ext.register("ext/code/code", {
         ceEditor.$editor.commands = this.commandManager;
 
         var _self = this;
-
+        
+        var menuSyntaxHighlight = new apf.item({
+            caption : "Syntax Highlighting",
+            submenu : "mnuSyntax"
+        });
+        
+        var menuShowInvisibles = new apf.item({
+            type    : "check",
+            caption : "Show Invisibles",
+            checked : "[{require('ext/settings/settings').model}::editors/code/@showinvisibles]"
+        });
+        
+        var menuWrapLines = new apf.item({
+            type    : "check",
+            caption : "Wrap Lines",
+            checked : "{ceEditor.wrapmode}"
+        });
+        
         this.nodes.push(
             //Add a panel to the statusbar showing whether the insert button is pressed
             sbMain.appendChild(new apf.section({
@@ -380,25 +398,8 @@ module.exports = ext.register("ext/code/code", {
             sbMain.appendChild(new apf.section({
                 caption : "Length: {ceEditor.value.length}"
             })),
-
-            mnuView.appendChild(new apf.item({
-                caption : "Syntax Highlighting",
-                submenu : "mnuSyntax"
-            })),
-
-            mnuView.appendChild(new apf.divider()),
-
-            mnuView.appendChild(new apf.item({
-                type    : "check",
-                caption : "Show Invisibles",
-                checked : "[{require('ext/settings/settings').model}::editors/code/@showinvisibles]"
-            })),
-
-            mnuView.appendChild(new apf.item({
-                type    : "check",
-                caption : "Wrap Lines",
-                checked : "{ceEditor.wrapmode}"
-            }))
+            
+            mnuView.appendChild(menuSyntaxHighlight)
         );
 
         mnuSyntax.onitemclick = function(e) {
@@ -440,7 +441,13 @@ module.exports = ext.register("ext/code/code", {
                 }
             }
         };
-
+        
+        ide.addEventListener("init.ext/statusbar/statusbar", function (e) {
+            // add preferences to the statusbar plugin
+            e.ext.addPrefsItem(menuShowInvisibles.cloneNode(true), 0);
+            e.ext.addPrefsItem(menuWrapLines.cloneNode(true), 1);
+        });
+        
         ide.addEventListener("keybindingschange", function(e) {
             if (typeof ceEditor == "undefined")
                 return;
@@ -450,9 +457,7 @@ module.exports = ext.register("ext/code/code", {
             // In case the `keybindingschange` event gets fired after other
             // plugins that change keybindings have already changed them (i.e.
             // the vim plugin), we fire an event so these plugins can react to it.
-            ide.dispatchEvent("code.ext:defaultbindingsrestored", {
-                bindings: ceEditor.$editor.getKeyboardHandler()
-            });
+            ide.dispatchEvent("code.ext:defaultbindingsrestored", {});
         });
     },
 
