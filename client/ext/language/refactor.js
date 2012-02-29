@@ -47,6 +47,7 @@ module.exports = {
         
         worker.on("variableLocations", function(event) {
             _self.enableVariableRefactor(event.data);
+            worker.emit("startRefactoring", {data: {}});
         });
 
         worker.on("refactorResult", function(event) {

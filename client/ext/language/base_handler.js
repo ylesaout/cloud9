@@ -63,6 +63,7 @@ module.exports = {
      * @param oldPath the path of the document that was active before
      */
     onDocumentOpen: function(path, doc, oldPath, callback) {
+        this.refactorInProgress = false;
         callback();
     },
     
@@ -71,6 +72,7 @@ module.exports = {
      * @param path the path of the file
      */
     onDocumentClose: function(path, callback) {
+        this.refactorInProgress = false;
         callback();
     },
     
@@ -156,6 +158,15 @@ module.exports = {
     },
 
     /**
+     * Invoked when refactoring is started -> So, for java, saving the file is no more legal to do
+     * @param doc the Document object repersenting the source
+     * @param oldId the old identifier wanted to be refactored
+     */
+    startRefactoring: function(doc) {
+      this.refactorInProgress = true;
+    },
+
+    /**
      * Invoked when a refactor request is being finalized and waiting for a status
      * @param doc the Document object repersenting the source
      * @param oldId the old identifier wanted to be refactored
@@ -163,6 +174,7 @@ module.exports = {
      * @return boolean indicating whether to progress or an error message if refactoring failed
      */
     finishRefactoring: function(doc, oldId, newName, callback) {
+        this.refactorInProgress = false;
         callback();
     },
 

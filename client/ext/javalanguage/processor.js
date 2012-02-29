@@ -86,24 +86,34 @@ var convertToHierarchyTree = function(doc, root) {
   return newRoot;
 };
 
-var saveFileAndDo = function(sender, callback) {
-  var checkSavingDone = function(event) {
-    var data = event.data;
-      if (data.command != "save")
-        return;
-      sender.removeEventListener("commandComplete", checkSavingDone);
-      if (! data.success) {
-        console.log("Couldn't save the file !!");
-        return callback(false);
-      }
-      console.log("Saving Complete");
-      callback(true);
-  };
-  sender.addEventListener("commandComplete", checkSavingDone);
-  sender.emit("commandRequest", { command: "save" });
-};
-
 (function() {
+
+    this.$saveFileAndDo = function(callback) {
+      var todos = this.todos = this.todos || [];
+      callback && todos.push(callback);
+
+      if (this.refactorInProgress)
+        return console.log("waiting refactor to finish");
+      var sender = this.sender;
+      var doCallbacks = function(status) {
+        while (todos.length > 0)
+          todos.pop()(status);
+      };
+      var checkSavingDone = function(event) {
+        var data = event.data;
+          if (data.command != "save")
+            return;
+          sender.removeEventListener("commandComplete", checkSavingDone);
+          if (! data.success) {
+            console.log("Couldn't save the file !!");
+            return doCallbacks(false);
+          }
+          console.log("Saving Complete");
+          doCallbacks(true);
+      };
+      sender.addEventListener("commandComplete", checkSavingDone);
+      sender.emit("commandRequest", { command: "save" });
+    };
 
     this.handlesLanguage = function(language) {
         return language === "java";
@@ -131,16 +141,16 @@ var saveFileAndDo = function(sender, callback) {
           _self.proxy.send(command);
         };
 
-        saveFileAndDo(this.sender, doComplete);
+        this.$saveFileAndDo(doComplete);
     };
 
     this.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNode /*null*/, callback) {
 
         console.log("onCursorMovedNode called");
 
-        if (this.inProgress || this.refactorInProgress)
+        if (this.getVariablesInProgress)
           return callback();
-        this.inProgress = true;
+        this.getVariablesInProgress = true;
 
         var _self = this;
         var markers = [];
@@ -149,8 +159,8 @@ var saveFileAndDo = function(sender, callback) {
         var originalCallback = callback;
         callback = function() {
           console.log("onCursorMove callback called");
-          _self.inProgress = false;
           originalCallback.apply(null, arguments);
+          _self.getVariablesInProgress = false;
         };
 
         var line = doc.getLine(cursorPos.row);
@@ -175,17 +185,15 @@ var saveFileAndDo = function(sender, callback) {
             return callback();
 
           _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
-            // console.log(message.body);
-
-            var v = message.body;
-
+            console.log("variable positions retrieved");
             _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
-            // console.log("variable positions retrieved");
-
+            console.log(message.body);
+            var v = message.body;
             highlightVariable(v);
             enableRefactorings.push("renameVariable");
             doneHighlighting();
           });
+          console.log("command: " + JSON.stringify(command));
           _self.proxy.send(command);
         };
 
@@ -215,8 +223,8 @@ var saveFileAndDo = function(sender, callback) {
         }
 
         function doneHighlighting() {
-          if (! _self.isFeatureEnabled("instanceHighlight"))
-            return callback({ enableRefactorings: enableRefactorings });
+          /*if (! _self.isFeatureEnabled("instanceHighlight"))
+            return callback({ enableRefactorings: enableRefactorings });*/
 
           callback({
               markers: markers,
@@ -224,7 +232,7 @@ var saveFileAndDo = function(sender, callback) {
           });
         }
 
-        saveFileAndDo(this.sender, doGetVariablePositions);
+        this.$saveFileAndDo(doGetVariablePositions);
     };
 
     this.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode /*null*/, callback) {
@@ -250,7 +258,6 @@ var saveFileAndDo = function(sender, callback) {
           _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
 
             _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
-
             var v = message.body;
             var elementPos = {column: identifier.sc, row: pos.row};
             var others = [];
@@ -274,12 +281,11 @@ var saveFileAndDo = function(sender, callback) {
           _self.proxy.send(command);
         };
 
-        saveFileAndDo(this.sender, doGetVariablePositions);
+        this.$saveFileAndDo(doGetVariablePositions);
     };
 
     this.finishRefactoring = function(doc, oldId, newName, callback) {
         var _self = this;
-        this.refactorInProgress = true;
 
         var offset = calculateOffset(doc, oldId);
 
@@ -297,6 +303,7 @@ var saveFileAndDo = function(sender, callback) {
 
         this.proxy.once("result", "jvmfeatures:refactor", function(message) {
           _self.refactorInProgress = false;
+          _self.$saveFileAndDo(); // notify of ending the refactor
           callback(message.body);
         });
         this.proxy.send(command);
@@ -321,7 +328,7 @@ var saveFileAndDo = function(sender, callback) {
           _self.proxy.send(command);
         };
 
-        saveFileAndDo(this.sender, doGetOutline);
+        this.$saveFileAndDo(doGetOutline);
     };
 
     this.hierarchy = function(doc, cursorPos, callback) {
@@ -354,7 +361,7 @@ var saveFileAndDo = function(sender, callback) {
           _self.proxy.send(command);
         };
 
-        saveFileAndDo(this.sender, doGetHierarchy);
+        this.$saveFileAndDo(doGetHierarchy);
     };
 
     this.analysisRequiresParsing = function() {
@@ -362,6 +369,7 @@ var saveFileAndDo = function(sender, callback) {
     };
 
      this.analyze = function(doc, fullAst /* null */, callback) {
+        return callback();
         var _self = this;
         var command = {
           command : "jvmfeatures",
@@ -393,7 +401,7 @@ var saveFileAndDo = function(sender, callback) {
           _self.proxy.send(command);
         };
 
-        saveFileAndDo(this.sender, doAnalyzeFile);
+        this.$saveFileAndDo(doAnalyzeFile);
     };
 
     this.codeFormat = function(doc, callback) {
@@ -415,7 +423,7 @@ var saveFileAndDo = function(sender, callback) {
           _self.proxy.send(command);
         };
 
-        saveFileAndDo(this.sender, doGetNewSource);
+        this.$saveFileAndDo(doGetNewSource);
     };
 
 }).call(handler);

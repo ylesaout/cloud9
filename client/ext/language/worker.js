@@ -29,7 +29,7 @@ disabledFeatures = {};
 sender.once = EventEmitter.once = function(event, fun) {
   var _self = this;
   var newCallback = function() {
-    fun && fun.apply(this, arguments);
+    fun && fun.apply(null, arguments);
     _self.removeEventListener(event, newCallback);
   };
   this.addEventListener(event, newCallback);
@@ -55,7 +55,6 @@ var ServerProxy = function(sender) {
     var channel = messageType;
     if (messageSubtype)
        channel += (":" + messageSubtype);
-    console.log("subscribe to: " + channel);
     this.emitter.addEventListener(channel, callback);
   };
   
@@ -63,7 +62,6 @@ var ServerProxy = function(sender) {
     var channel = messageType;
     if (messageSubtype)
        channel += (":" + messageSubtype);
-    console.log("unsubscribe from: " + channel);
     this.emitter.removeEventListener(channel, f);
   };
 
@@ -118,8 +116,10 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
         _self.jumpToDefinition(event);
     });
     sender.on("fetchVariablePositions", function(event) {
-        console.log("fetch called");
         _self.sendVariablePositions(event);
+    });
+    sender.on("startRefactoring", function(event) {
+        _self.startRefactoring(event);
     });
     sender.on("finishRefactoring", function(event) {
         _self.finishRefactoring(event);
@@ -259,7 +259,6 @@ function asyncParForEach(array, fn, callback) {
     };
 
     this.codeFormat = function() {
-        console.log("worker codeFormat called");
         var _self = this;
         asyncForEach(_self.handlers, function(handler, next) {
             if (handler.handlesLanguage(_self.$language)) {
@@ -320,8 +319,8 @@ function asyncParForEach(array, fn, callback) {
                     extendedMakers = markers.concat(_self.getLastAggregateActions().markers);
                 _self.scheduleEmit("markers", _self.filterMarkersBasedOnLevel(extendedMakers));
                 _self.currentMarkers = markers;
-                if (_self.postponedCursorMove)
-                    _self.onCursorMove(_self.postponedCursorMove);
+                if (_self.postponedCursorMove) {}
+                    // _self.onCursorMove(_self.postponedCursorMove);
                 callback();
             });
         });
@@ -468,6 +467,14 @@ function asyncParForEach(array, fn, callback) {
                 next();
         }, function() {
         });
+    };
+
+    this.startRefactoring = function(event) {
+        var _self = this;
+        this.handlers.forEach(function(handler){
+			if (handler.handlesLanguage(_self.$language))
+				handler.startRefactoring(_self.doc);
+		});
     };
 
     this.finishRefactoring = function(event) {
