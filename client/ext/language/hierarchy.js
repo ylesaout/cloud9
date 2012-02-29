@@ -61,7 +61,8 @@ module.exports = {
         var xmlS = [];
         xmlS.push('<entry name="'); xmlS.push(root.name);
             xmlS.push('" icon="' + root.icon);
-        root.meta && xmlS.push('" meta="') && xmlS.push(root.meta);
+            root.meta && xmlS.push('" meta="') && xmlS.push(root.meta);
+            root.src && xmlS.push('" src="') && xmlS.push(root.src);
             root === selected && xmlS.push('" selected="true');
             xmlS.push('">\n');
         var items = root.items;
@@ -121,7 +122,9 @@ module.exports = {
             // a source file is available
             var src = el.getAttribute("src");
             if (src) {
-                // TODO open the file (if not already open) and switch focus
+                // open the file (if not already open) and switch focus
+                var filepath = src.replace("/" + window.cloud9config.projectName, window.cloud9config.davPrefix);
+                editors.showFile(filepath);
             }
         });
     },

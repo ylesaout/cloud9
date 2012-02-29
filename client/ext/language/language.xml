@@ -96,7 +96,6 @@
                   skin            = "outline-tree"
                   opencloseaction = "onmouseup"
                   onafterchoose   = "require('ext/language/hierarchy').jumpToAndClose(this.selected)"
-                  onafterselect   = "require('ext/language/hierarchy').jumpTo(this.selected)"
                   onkeyup         = "require('ext/language/hierarchy').escapeHierarchy(event)"
                   model           = "mdlHierarchy"
                   openadd         = "false"
