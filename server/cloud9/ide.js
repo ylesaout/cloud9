@@ -142,6 +142,7 @@ Ide.DEFAULT_PLUGINS = [
     "ext/quickstart/quickstart",
     "ext/jslanguage/jslanguage",
     "ext/javalanguage/javalanguage",
+    "ext/build/build",
     "ext/autotest/autotest",
     "ext/tabsessions/tabsessions",
     "ext/closeconfirmation/closeconfirmation",

@@ -33,7 +33,7 @@ sys.inherits(JVMFeatures, Plugin);
         var subCmd = (message.subcommand || "").toLowerCase();
 
         if (! this.eclipseClient)
-          return this.$error("No eclipse session running! " + cmd+":"+subCmd+":"+message.file, 3);
+          return this.$error("No eclipse session running! " + cmd+":"+subCmd+":"+message.file, 2);
 
         var res = true;
         switch (subCmd) {
@@ -41,7 +41,7 @@ sys.inherits(JVMFeatures, Plugin);
                 this.eclipseClient.codeComplete(message.project, message.file, message.offset,
                   function(data) {
                     if (! data.success)
-                      return _self.$error("Could not execute complete request", 2);
+                      return _self.$error("Could not execute complete request", 3);
                     var matches = data.body;
                     var absFilePath = Path.join(_self.basePath, message.file);
                     console.log("file: " + absFilePath + ":" + message.offset + " & matches: " + matches);
@@ -120,6 +120,15 @@ sys.inherits(JVMFeatures, Plugin);
                     _self.sendResult(0, cmd + ":" + subCmd, data.body);
                 });
                 break;
+
+            case "build":
+              this.eclipseClient.buildProject(message.project,
+                  function(data) {
+                    if (! data.success)
+                      return _self.$error("Could not execute build request", 10);
+                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
+                });
+                break;            
             default:
                 res = false;
                 break;

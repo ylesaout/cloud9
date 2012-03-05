@@ -118,7 +118,6 @@ module.exports = {
 
     jumpTo: function(el) {
         setTimeout(function() {
-            var editor = editors.currentEditor.ceEditor.$editor;
             // a source file is available
             var src = el.getAttribute("src");
             if (src) {

@@ -32,7 +32,7 @@ var extSettings = require("ext/settings/settings");
 
 
 module.exports = ext.register("ext/language/language", {
-    name    : "Javascript Outline",
+    name    : "Multiple Language Features",
     dev     : "Ajax.org",
     type    : ext.GENERAL,
     deps    : [editors, noderunner],
