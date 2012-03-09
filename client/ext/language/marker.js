@@ -11,8 +11,9 @@ var Anchor = require('ace/anchor').Anchor;
 var tooltip = require('ext/language/tooltip');
 
 module.exports = {
+
     disabledMarkerTypes: {},
-    
+
     hook: function(language, worker) {
         var _self = this;
         worker.on("markers", function(event) {
@@ -32,7 +33,7 @@ module.exports = {
         else
             tooltip.hide();
     },
-    
+
     removeMarkers: function(session) {
         var markers = session.getMarkers(false);
         for (var id in markers) {
@@ -46,7 +47,7 @@ module.exports = {
         }
         session.markerAnchors = [];
     },
-    
+
     addMarkers: function(event, editor) {
         var _self = this;
         var annos = event.data;
@@ -95,7 +96,7 @@ module.exports = {
         });
         mySession.setAnnotations(mySession.languageAnnos);
     },
-    
+
     /**
      * Temporarily disable certain types of markers (e.g. when refactoring)
      */
@@ -109,11 +110,11 @@ module.exports = {
                 session.removeMarker(id);
         }
     },
-    
+
     enableMarkerType: function(type) {
         this.disabledMarkerTypes[type] = false;
     },
-    
+
     /**
      * Called when text in editor is updated
      * This attempts to predict how the worker is going to adapt markers based on the given edit
@@ -183,14 +184,6 @@ module.exports = {
         if (foundOne)
             session._dispatchEvent("changeBackMarker");
     }
-};
-
-// Monkeypatching ACE's JS mode to disable worker
-// this will be handled by C9's worker
-var JavaScriptMode = require('ace/mode/javascript').Mode;
-
-JavaScriptMode.prototype.createWorker = function() {
-    return null;
 };
 
 });

@@ -403,7 +403,7 @@ handler.analyze = function(doc, ast, callback) {
                         });
                     }
                     else {
-                        scope.get(b.x.value).addUse(node[0]);
+                        scope[b.x.value].addUse(node[0]);
                     }
                     analyze(scope, b.e);
                     return this;
