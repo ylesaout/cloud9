@@ -12,6 +12,7 @@ var ide = require("core/ide");
 var code = require("ext/code/code");
 
 var ID_REGEX = /[a-zA-Z_0-9\$]/;
+var oldCommandKey;
 
 var retrieveFullIdentifier = function(text, pos) {
     var buf = [];
@@ -34,31 +35,25 @@ var retrieveFullIdentifier = function(text, pos) {
 };
 
 module.exports = {
-    renameVariableItem: null,
-    worker: null,
     
     hook: function(ext, worker) {
         var _self = this;
         this.worker = worker;
-        
+
         worker.on("enableRefactorings", function(event) {
             _self.enableRefactorings(event);
         });
-        
+
         worker.on("variableLocations", function(event) {
             _self.enableVariableRefactor(event.data);
             worker.emit("startRefactoring", {data: {}});
         });
 
         worker.on("refactorResult", function(event) {
-            _self.placeHolder && _self.placeHolder.detach();
-            marker.enableMarkerType('occurrence_main');
-            marker.enableMarkerType('occurrence_other');
-
             var data = event.data;
             if (! data.success) {
-                console.log("TODO: reset the document and pop a refactor error");
-                // TODO reset the document to its initial state && show the error message
+                console.log("ERROR: now we should reset the document and pop a refactor error");
+                _self.cancelRefactoring();
             }
         });
 
@@ -130,23 +125,23 @@ module.exports = {
             ceEditor.$editor.moveCursorTo(mainPos.row, mainPos.column);
         }
         p.showOtherMarkers();
+        
+        // Monkey patch
+        if(!oldCommandKey) {
+            var ace = ceEditor.$editor;
+            oldCommandKey = ace.keyBinding.onCommandKey;
+            ace.keyBinding.onCommandKey = this.onKeyPress.bind(this);
+        }
 
         p.on("cursorLeave", function() {
-            // Finished refactoring in editor
-            // -> continue with the worker giving the initial refactor cursor position
-            if (_self.oldIdentifier) {
-                var doc = ceEditor.getDocument();
-                var oPos = _self.placeHolder.pos;
-                var line = doc.getLine(oPos.row);
-                var newIdentifier = retrieveFullIdentifier(line, oPos.column);
-                _self.worker.emit("finishRefactoring", {data: { oldId: _self.oldIdentifier, newName: newIdentifier.text } });
-                _self.oldIdentifier = null;
-            }
+            _self.finishRefactoring();
         });
     },
 
     renameVariable: function() {
-        var curPos = ceEditor.$editor.getCursorPosition();
+        var editor = ceEditor.$editor;
+        editor.focus();
+        var curPos = editor.getCursorPosition();
         var doc = ceEditor.getDocument();
         var line = doc.getLine(curPos.row);
         var oldId = retrieveFullIdentifier(line, curPos.column);
@@ -156,6 +151,54 @@ module.exports = {
             text: oldId.text
         };
         this.worker.emit("fetchVariablePositions", {data: curPos});
+    },
+
+    finishRefactoring: function() {
+        // Finished refactoring in editor
+        // -> continue with the worker giving the initial refactor cursor position
+        var doc = ceEditor.getDocument();
+        var oPos = this.placeHolder.pos;
+        var line = doc.getLine(oPos.row);
+        var newIdentifier = retrieveFullIdentifier(line, oPos.column);
+        this.worker.emit("finishRefactoring", {data: { oldId: this.oldIdentifier, newName: newIdentifier.text } });
+        this.$cleanup();
+    },
+
+    cancelRefactoring: function() {
+        this.placeHolder.cancel();
+        this.worker.emit("cancelRefactoring", {data: {}});
+        this.$cleanup();
+    },
+
+    $cleanup: function() {
+        this.placeHolder && this.placeHolder.detach();
+        marker.enableMarkerType('occurrence_main');
+        marker.enableMarkerType('occurrence_other');
+        this.placeHolder = null;
+        this.oldIdentifier = null;
+        if(oldCommandKey) {
+            ceEditor.$editor.keyBinding.onCommandKey = oldCommandKey;
+            oldCommandKey = null;
+        }
+    },
+
+    onKeyPress : function(e, hashKey, keyCode) {
+        var keyBinding = ceEditor.$editor.keyBinding;
+
+        switch(keyCode) {
+            case 32: // Space can't be accepted as it will ruin the logic of retrieveFullIdentifier
+            case 27: // Esc
+                this.cancelRefactoring();
+                e.preventDefault();
+                break;
+            case 13: // Enter
+                this.finishRefactoring();
+                e.preventDefault();
+                break;
+            default:
+                oldCommandKey.apply(keyBinding, arguments);
+                break;
+        }
     }
 };
 

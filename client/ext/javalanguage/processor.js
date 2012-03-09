@@ -310,6 +310,12 @@ var convertToHierarchyTree = function(doc, root) {
         this.proxy.send(command);
     };
 
+    this.cancelRefactoring = function(callback) {
+        this.refactorInProgress = false;
+        _self.$saveFileAndDo(); // notify of ending the refactor
+        callback();
+    };
+
     this.outline = function(doc, fullAst /*null*/, callback) {
         var _self = this;
         var command = {

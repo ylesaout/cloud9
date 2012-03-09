@@ -179,6 +179,14 @@ module.exports = {
     },
 
     /**
+     * Invoked when a refactor request is cancelled
+     */
+    cancelRefactoring: function(callback) {
+        this.refactorInProgress = false;
+        callback();
+    },
+
+    /**
      * Invoked when an automatic code formating is wanted
      * @param doc the Document object repersenting the source
      * @return a string value representing the new source code after formatting or null if not supported

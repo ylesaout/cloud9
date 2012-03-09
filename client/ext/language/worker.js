@@ -124,6 +124,9 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
     sender.on("finishRefactoring", function(event) {
         _self.finishRefactoring(event);
     });
+    sender.on("cancelRefactoring", function(event) {
+        _self.cancelRefactoring(event);
+    });
     sender.on("serverProxy", function(event) {
         _self.serverProxy.onMessage(event.data);
     });
@@ -503,6 +506,20 @@ function asyncParForEach(array, fn, callback) {
                 _self.sender.emit("refactorResult", {success: true});
         });
     };
+
+    this.cancelRefactoring = function(event) {
+        var _self = this;
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.cancelRefactoring(function() {
+                    next();
+                });
+            }
+            else
+                next();
+        }, function() {
+        });
+    }
 
     this.onUpdate = function() {
         this.scheduledUpdate = false;
