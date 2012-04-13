@@ -35,22 +35,27 @@ sys.inherits(JVMFeatures, Plugin);
         if (! this.eclipseClient)
           return this.$error("No eclipse session running! " + cmd+":"+subCmd+":"+message.file, 2);
 
+        function resultSender(data) {
+            if (! data.success)
+                console.error("Could not execute " + subCmd + " request");
+            _self.sendResult(0, cmd + ":" + subCmd, {
+                success: data.success,
+                body: data.body || null
+            });
+        }
+
         var res = true;
         switch (subCmd) {
             case "complete":
                 this.eclipseClient.codeComplete(message.project, message.file, message.offset,
                   function(data) {
-                    if (! data.success)
-                      return _self.$error("Could not execute complete request", 3);
-                    var matches = data.body;
-                    var absFilePath = Path.join(_self.basePath, message.file);
-                    console.log("file: " + absFilePath + ":" + message.offset + " & matches: " + matches);
-                    _self.sendResult(0, cmd + ":" + subCmd, {
-                      matches: matches
-                    });
+                    // var absFilePath = Path.join(_self.basePath, message.file);
+                    // console.log("file: " + absFilePath + ":" + message.offset + " & matches: " + matches);
+                    resultSender(data);
+                    /* var matches = data.body || [];
                     for (var i = 0; i < matches.length; i++) {
-                      console.log(util.inspect(matches[i], true, null));
-                    }
+                        console.log(util.inspect(matches[i], true, null));
+                    }*/
                 });
               break;
 
@@ -58,77 +63,51 @@ sys.inherits(JVMFeatures, Plugin);
             case "get_locations":
                 this.eclipseClient.getLocations(message.project, message.file, message.offset, message.length,
                   function(data) {
-                    if (! data.success)
-                      return _self.$error("Could not execute get_locations request", 4);
-                    var matches = data.body;
-                    _self.sendResult(0, cmd + ":" + subCmd, {
-                      uses: matches.filter(function(match) {
-                          return match.type == "reference";
+                    var matches = data.body || [];
+                    data.body = {
+                        uses: matches.filter(function(match) {
+                            return match.type == "reference";
                         }),
-                      declarations: matches.filter(function(match) {
-                          return match.type == "declaration";
+                        declarations: matches.filter(function(match) {
+                            return match.type == "declaration";
                         })
-                    });
+                    };
+                    resultSender(data);
                 });
               break;
 
             // Do refactoring
             case "refactor":
-                this.eclipseClient.refactor(message.project, message.file, message.newname, message.offset, message.length,
-                  function(data) {
-                    if (! data.success)
-                      return _self.$error("Could not execute refactor request", 5);
-                    _self.sendResult(0, cmd + ":" + subCmd, {
-                      success: data.success,
-                      message: data.body
-                    });
-                });
+                this.eclipseClient.refactor(message.project, message.file,
+                    message.newname, message.offset, message.length, resultSender);
               break;
 
             case "outline":
-                this.eclipseClient.outline(message.project, message.file,
-                  function(data) {
-                    if (! data.success)
-                      return _self.$error("Could not execute outline request", 6);
-                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
-                });
+                this.eclipseClient.outline(message.project, message.file, resultSender);
                 break;
 
             case "code_format":
-                this.eclipseClient.codeFormat(message.project, message.file,
-                  function(data) {
-                    if (! data.success)
-                      return _self.$error("Could not execute format request", 7);
-                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
-                });
+                this.eclipseClient.codeFormat(message.project, message.file, resultSender);
                 break;
 
             case "analyze_file":
-              this.eclipseClient.analyzeFile(message.project, message.file,
-                  function(data) {
-                    if (! data.success)
-                      return _self.$error("Could not execute analyze request", 8);
-                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
-                });
+              this.eclipseClient.analyzeFile(message.project, message.file, resultSender);
                 break;
 
             case "hierarchy":
-              this.eclipseClient.hierarchy(message.project, message.file, message.offset, message.type,
-                  function(data) {
-                    if (! data.success)
-                      return _self.$error("Could not execute hierarchy request", 9);
-                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
-                });
+              this.eclipseClient.hierarchy(message.project, message.file, message.offset,
+                  message.type, resultSender);
                 break;
 
             case "build":
-              this.eclipseClient.buildProject(message.project,
-                  function(data) {
-                    if (! data.success)
-                      return _self.$error("Could not execute build request", 10);
-                    _self.sendResult(0, cmd + ":" + subCmd, data.body);
-                });
-                break;            
+              this.eclipseClient.buildProject(message.project, resultSender);
+                break;
+
+            case "navigate":
+              this.eclipseClient.navigate(message.project, message.file, message.navType,
+                  message.offset, message.length, resultSender);
+                break;
+
             default:
                 res = false;
                 break;
@@ -176,7 +155,6 @@ sys.inherits(JVMFeatures, Plugin);
     };
 
     this.dispose = function(callback) {
-        // TODO kill all eclipse instances
         callback();
     };
 

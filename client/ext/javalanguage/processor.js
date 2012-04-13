@@ -136,8 +136,7 @@ var convertToHierarchyTree = function(doc, root) {
           };
           console.log("offset = " + offset);
           _self.proxy.once("result", "jvmfeatures:complete", function(message) {
-            console.log(message.body);
-            callback(message.body.matches);
+            callback(message.body || []);
           });
           _self.proxy.send(command);
         };
@@ -186,8 +185,10 @@ var convertToHierarchyTree = function(doc, root) {
             return callback();
 
           _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
-            console.log("variable positions retrieved");
             _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
+            if (! message.success)
+              return callback();
+            console.log("variable positions retrieved");
             console.log(message.body);
             var v = message.body;
             highlightVariable(v);
@@ -259,6 +260,10 @@ var convertToHierarchyTree = function(doc, root) {
           _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
 
             _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
+            if (! message.success)
+              return callback();
+            console.log("variable positions retrieved");
+            console.log(message.body);
             var v = message.body;
             var elementPos = {column: identifier.sc, row: pos.row};
             var others = [];
@@ -305,14 +310,16 @@ var convertToHierarchyTree = function(doc, root) {
         this.proxy.once("result", "jvmfeatures:refactor", function(message) {
           _self.refactorInProgress = false;
           _self.$saveFileAndDo(); // notify of ending the refactor
-          callback(message.body);
+          // Error handling in the callback
+          console.log({success: message.success, body: message.body});
+          callback({success: message.success, body: message.body});
         });
         this.proxy.send(command);
     };
 
     this.cancelRefactoring = function(callback) {
         this.refactorInProgress = false;
-        _self.$saveFileAndDo(); // notify of ending the refactor
+        this.$saveFileAndDo(); // notify of ending the refactor
         callback();
     };
 
@@ -325,12 +332,15 @@ var convertToHierarchyTree = function(doc, root) {
           file : getFilePath(_self.path)
         };
 
-        console.log("outline called");
-
         var doGetOutline = function() {
           _self.proxy.once("result", "jvmfeatures:outline", function(message) {
-            console.log(message.body);
-            callback(convertToOutlineTree(doc, message.body));
+            var outline = null;
+            if (! message.success)
+              console.log("FAILED: outline call");
+            else
+              outline = convertToOutlineTree(doc, message.body);
+            // Error handling in the callback
+            callback({success: message.success, body: outline});
           });
           _self.proxy.send(command);
         };
@@ -358,12 +368,17 @@ var convertToHierarchyTree = function(doc, root) {
 
         var doGetHierarchy = function() {
           _self.proxy.once("result", "jvmfeatures:hierarchy", function(message) {
-            console.log("hierarchy_result");
             // Super and subtype hierarchies roots
             var result = message.body;
-            console.log(result);
-            callback([convertToHierarchyTree(doc, result[0]),
-                convertToHierarchyTree(doc, result[1])]);
+            var hierarchy;
+            if (! message.success) {
+              console.log("FAILED: hierarchy call");
+            } else {
+              hierarchy = [convertToHierarchyTree(doc, result[0]),
+                convertToHierarchyTree(doc, result[1])];
+            }
+            // Error handling in the callback
+            callback({success: message.success, body: hierarchy});
           });
           _self.proxy.send(command);
         };
@@ -388,21 +403,26 @@ var convertToHierarchyTree = function(doc, root) {
 
         var doAnalyzeFile = function() {
           _self.proxy.once("result", "jvmfeatures:analyze_file", function(message) {
-            callback(message.body.map(function(marker) {
-              var start = calculatePosition(doc, marker.offset);
-              var end = calculatePosition(doc, marker.offset + marker.length);
-              return {
-                pos: {
-                  sl: start.row,
-                  sc: start.column,
-                  el: end.row,
-                  ec: end.column
-                },
-                level: marker.level,
-                type: marker.type,
-                message: marker.message
-              };
-            }));
+            if (message.success) {
+              callback(message.body.map(function(marker) {
+                var start = calculatePosition(doc, marker.offset);
+                var end = calculatePosition(doc, marker.offset + marker.length);
+                return {
+                  pos: {
+                    sl: start.row,
+                    sc: start.column,
+                    el: end.row,
+                    ec: end.column
+                  },
+                  level: marker.level,
+                  type: marker.type,
+                  message: marker.message
+                };
+              }));
+            } else {
+              console.log("FAILED: analyze call");
+              callback();
+            }
           });
           _self.proxy.send(command);
         };
@@ -419,12 +439,9 @@ var convertToHierarchyTree = function(doc, root) {
           file : getFilePath(_self.path)
         };
 
-        console.log("code_format called");
-
         var doGetNewSource = function() {
           _self.proxy.once("result", "jvmfeatures:code_format", function(message) {
-            console.log(message.body);
-            callback(message.body);
+            callback(message.success ? message.body : null);
           });
           _self.proxy.send(command);
         };

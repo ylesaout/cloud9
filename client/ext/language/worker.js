@@ -70,7 +70,7 @@ var ServerProxy = function(sender) {
     if (msg.subtype)
       channel += (":" + msg.subtype);
     console.log("publish to: " + channel);
-    this.emitter.emit(channel, msg);
+    this.emitter.emit(channel, msg.body);
   };
 };
 
@@ -493,7 +493,6 @@ function asyncParForEach(array, fn, callback) {
                 handler.finishRefactoring(_self.doc, oldId, newName, function(response) {
                     if (response) {
                         handled = true;
-                        console.log("Refactor result retrieved");
                         _self.sender.emit("refactorResult", response);
                     }
                     next();
@@ -536,6 +535,12 @@ function asyncParForEach(array, fn, callback) {
     
     // TODO: BUG open an XML file and switch between, language doesn't update soon enough
     this.switchFile = function(path, language, code, project) {
+        var _self = this;
+        if (! this.$analyzeInterval) {
+            this.$analyzeInterval = setInterval(function() {
+                _self.analyze(function(){});
+            }, 2000);
+        }
         var oldPath = this.$path;
         code = code || "";
         this.$path = path;
@@ -553,6 +558,10 @@ function asyncParForEach(array, fn, callback) {
     };
     
     this.documentClose = function(event) {
+        if (this.$analyzeInterval) {
+            clearInterval(this.$analyzeInterval);
+            this.$analyzeInterval = null;
+        }
         var path = event.data;
         asyncForEach(this.handlers, function(handler, next) {
             handler.onDocumentClose(path, next);
@@ -640,8 +649,8 @@ function asyncParForEach(array, fn, callback) {
                     else
                         return 0;
                 });
-                
-                matches = matches.slice(0, 50); // 50 ought to be enough for everybody
+                // Don't slice the results to benefit from caching
+                // matches = matches.slice(0, 50); // 50 ought to be enough for everybody
                 _self.sender.emit("complete", matches);
             });
         });

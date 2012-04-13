@@ -74,7 +74,12 @@ module.exports = ext.register("ext/build/build", {
             var message = e.message;
             if (message.subtype == "jvmfeatures:build") {
                 console.log("build: ", message);
-                var problems = message.body;
+                var msg = message.body;
+                if (! msg.success) {
+                    // TODO pop up an error dialog with "build failure"
+                    return;
+                }
+                var problems = msg.body;
                 // if no problems at all, show the build succeeded message
                 if (problems.length == 0) {
                     trDGBuild.setAttribute("empty-message", "Build succeeded");

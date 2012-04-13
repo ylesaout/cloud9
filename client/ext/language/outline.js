@@ -58,7 +58,12 @@ module.exports = {
     renderOutline : function(event) {
         console.log("Rendering layout");
         var ace = editors.currentEditor.ceEditor.$editor;
-        var outline = event.data;
+        var data = event.data;
+        if (! data.success) {
+            // TODO pop up an error dialog
+            return;
+        }
+        var outline = data.body;
         
         barOutline.setAttribute('visible', true);
         var selected = this.findCursorInOutline(outline, ace.getCursorPosition());

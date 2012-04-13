@@ -72,11 +72,11 @@ sys.inherits(JVMRuntimePlugin, Plugin);
             return _self.workspace.error("Child process already running!", 1, message);
 
         var file = _self.workspace.workspaceDir + "/" + message.file;
-        
+
         Path.exists(file, function(exists) {
            if (!exists)
                return _self.workspace.error("File does not exist: " + message.file, 2, message);
-            
+
            var cwd = _self.ide.workspaceDir + "/" + (message.cwd || "");
            Path.exists(cwd, function(exists) {
                if (!exists)
@@ -105,32 +105,55 @@ sys.inherits(JVMRuntimePlugin, Plugin);
                 var javaClass = file.substring("src/".length).replace(new RegExp("/", "g"), ".").replace(/\.java$/, "");
                 console.log("java class: " + javaClass);
                 jvmInstance = new JVMInstance(cwd, javaClass);
-                build(cwd, function(compilationResult) {
-                    if (compilationResult.errors.length == 0)
-                        start();
-                    else {
-                        // TODO send compilation errors
-                        console.error(JSON.stringify(compilationResult));
-                    }
+                break;
+
+            case "java-web":
+                netutil.findFreePort(this.WEBAPP_START_PORT, this.WEBAPP_START_PORT + 1000, "localhost",
+                function(err, port) {
+                    if (err)
+                        return _self.$error("Could not find a free port", 1, err);
+
+                    var jvmInstance = new WebJVMInstance(cwd, 'j2ee', 'localhost', port);
+                    jvmInstance.on('lifecycle:started', function() {
+                        // TODO, notify the client that the server is now started
+                        // _self.ide.broadcast(JSON.stringify({}), _self.name);
+                    });
                 });
                 break;
+
             case "jpy":
                 jvmInstance = new ScriptJVMInstance(cwd, "jython", file);
                 break;
+
             case "jrb":
                 jvmInstance = new ScriptJVMInstance(cwd, "jruby1.8.7", file);
                 break;
+
             case "groovy":
                 jvmInstance = new ScriptJVMInstance(cwd, "groovy", file);
                 break;
+
             case "js-rhino":
                 console.error("JS-Rhino not tested yet");
                 break;
+
             default:
                 console.error("unsupported runtime environment")
         }
-        
+
         switch (runner) {
+            case "java":
+            case "java-web":
+                build(cwd, function(err, compilationResult) {
+                    if (err)  return console.error(err);
+
+                    if (compilationResult.errors.length == 0)
+                        start();
+                    else
+                        // TODO send compilation errors to the user
+                        console.log("Compilation errors: " + JSON.stringify(compilationResult));
+                }, "build");
+                break;
             case "jpy":
             case "jrb":
             case "groovy":
@@ -138,7 +161,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
                 start();
                 break;
         }
-        
+
         function start() {
             console.log("JVM started");
             jvmInstance.on("output", sender("stdout"));
@@ -175,5 +198,5 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         this.$kill();
         callback();
     };
-    
+
 }).call(JVMRuntimePlugin.prototype);

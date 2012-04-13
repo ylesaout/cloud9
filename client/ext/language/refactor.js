@@ -52,9 +52,12 @@ module.exports = {
         worker.on("refactorResult", function(event) {
             var data = event.data;
             if (! data.success) {
-                console.log("ERROR: now we should reset the document and pop a refactor error");
+                console.log("REFACTOR ERROR & msg: ", data.body); // TODO pop up a dialog
                 _self.cancelRefactoring();
+            } else {
+                _self.placeHolder.detach();
             }
+            _self.$cleanup();
         });
 
         var nodes = [];
@@ -161,17 +164,17 @@ module.exports = {
         var line = doc.getLine(oPos.row);
         var newIdentifier = retrieveFullIdentifier(line, oPos.column);
         this.worker.emit("finishRefactoring", {data: { oldId: this.oldIdentifier, newName: newIdentifier.text } });
-        this.$cleanup();
     },
 
     cancelRefactoring: function() {
-        this.placeHolder.cancel();
+        if (this.placeHolder) {
+            this.placeHolder.detach();
+            this.placeHolder.cancel();
+        }
         this.worker.emit("cancelRefactoring", {data: {}});
-        this.$cleanup();
     },
 
     $cleanup: function() {
-        this.placeHolder && this.placeHolder.detach();
         marker.enableMarkerType('occurrence_main');
         marker.enableMarkerType('occurrence_other');
         this.placeHolder = null;

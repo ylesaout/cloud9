@@ -78,9 +78,14 @@ module.exports = {
     },
 
     renderHierarchy : function(event, hierId) {
-        console.log("Rendering heirarchy");
+        console.log("Rendering heirarchy, ", event.data);
         var ace = editors.currentEditor.ceEditor.$editor;
-        var hierarchies = event.data;
+        var data = event.data;
+        if (! data.success) {
+            // TODO pop up an error dialog
+            return;
+        }
+        var hierarchies = data.body;
         var hierarchy = hierarchies[hierId];
 
         barHierarchy.setAttribute('visible', true);

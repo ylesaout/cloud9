@@ -10,20 +10,9 @@ var editors = require("ext/editors/editors");
 var dom = require("ace/lib/dom");
 var keyhandler = require("ext/language/keyhandler");
 
-var lang = require("ace/lib/lang");
 var ID_REGEX = /[a-zA-Z_0-9\$]/;
 
 var oldCommandKey, oldOnTextInput;
-
-var deferredInvoke = lang.deferredCall(function() {
-    var editor = editors.currentEditor.ceEditor.$editor;
-    var pos = editor.getCursorPosition();
-    var line = editor.getSession().getDocument().getLine(pos.row);
-    if(keyhandler.preceededByIdentifier(line, pos.column) || line[pos.column - 1] === '.')
-        module.exports.invoke(true);
-    else
-        module.exports.closeCompletionBox();
-});
 
 var calculatePosition = function(doc, offset) {
     var row = 0, column, newLineLength = doc.getNewLineCharacter().length;;
@@ -109,7 +98,6 @@ module.exports = {
         worker.on("complete", function(event) {
             _self.onComplete(event);
         });
-        this.$onChange = this.onChange.bind(this);
     },
     
     showCompletionBox: function(matches, prefix) {
@@ -162,10 +150,9 @@ module.exports = {
         }, 0);
     },
 
-    closeCompletionBox : function(event, doNotHide) {
+    closeCompletionBox : function() {
         var ace = editors.currentEditor.ceEditor.$editor;
-        if (!doNotHide)
-            barCompleterCont.$ext.style.display = "none";
+        barCompleterCont.$ext.style.display = "none";
         document.removeEventListener("click", this.closeCompletionBox);
         ace.container.removeEventListener("DOMMouseScroll", this.closeCompletionBox);
         ace.container.removeEventListener("mousewheel", this.closeCompletionBox);
@@ -213,8 +200,8 @@ module.exports = {
             if(text.match(/[^A-Za-z0-9_\$\.]/))
                 this.closeCompletionBox();
             else {
-                this.closeCompletionBox(null, true);
-                deferredInvoke();
+                if(this.cachedMatches)
+                    this.filterAndShow(this.cachedMatches);
             }
         }
     },
@@ -229,8 +216,6 @@ module.exports = {
         
         var keyBinding = editors.currentEditor.ceEditor.$editor.keyBinding;
         
-        //keyBinding = 10;
-        
         switch(keyCode) {
             case 0: break;
             case 32: // Space
@@ -242,10 +227,7 @@ module.exports = {
                 break;
             case 8: // Backspace
                 oldCommandKey.apply(keyBinding, arguments);
-                setTimeout(function() {
-                    _self.closeCompletionBox(null, true);
-                    deferredInvoke();
-                }, 100);
+                this.filterAndShow(this.cachedMatches);
                 e.preventDefault();
                 break;
             case 37:
@@ -298,67 +280,70 @@ module.exports = {
     setWorker: function(worker) {
         this.worker = worker;
     },
-    
-    deferredInvoke: function() {
-        deferredInvoke.cancel().schedule(200);
-    },
-    
-    onChange: function() {
-        this.deferredInvoke();
-    },
 
     invoke: function(forceBox) {
         var editor = editors.currentEditor.ceEditor.$editor;
         var _self = this;
         this.forceBox = forceBox;
-        editor.addEventListener("change", this.$onChange);
         // This is required to ensure the updated document text has been sent to the worker before the 'complete' message
         var worker = this.worker;
         setTimeout(function() {
+            var pos = editor.getCursorPosition();
+            var line = editor.getSession().getLine(pos.row);
+            var identifier = retrievePreceedingIdentifier(line, pos.column);
+            _self.cachedIden = identifier;
             worker.emit("complete", {data: editor.getCursorPosition()});
         });
-        if(forceBox)
+        if(forceBox) {
+            clearTimeout(this.hideTimer);
             this.hideTimer = setTimeout(function() {
                 // Completion takes or crashed
                 _self.closeCompletionBox();
             }, 4000);
+        }
     },
     
-    onComplete: function(event) {
+    onComplete: function(event) {        
+        var matches = this.cachedMatches = event.data;
+        this.filterAndShow(matches, true);
+    },
+
+    filterAndShow: function (matches, initialReq) {
+        // copy the matches for not altering the cached matches
+        matches = matches.slice(0);
+
         var editor = editors.currentEditor.ceEditor.$editor;
         var pos = editor.getCursorPosition();
         var line = editor.getSession().getLine(pos.row);
         var identifier = retrievePreceedingIdentifier(line, pos.column);
-        
-        editor.removeEventListener("change", this.$onChange);
+
         clearTimeout(this.hideTimer);
-    
-        var matches = event.data;
         var identifierLowered = identifier.toLowerCase();
-        
+
+        if (identifierLowered.indexOf(this.cachedIden.toLowerCase()) != 0)
+            return this.closeCompletionBox();
+
         // Remove out-of-date matches
         for (var i = 0; i < matches.length; i++) {
             // change the condition to fit the java package abbreviation
             // maybe also compare with ignoring cases
-            if(matches[i].name.toLowerCase().indexOf(identifierLowered) == -1) {
+            if(matches[i].name.toLowerCase().indexOf(identifierLowered) !== 0) {
                 matches.splice(i, 1);
                 i--;
             }
         }
-        
-        if (matches.length === 1 && !this.forceBox) {
+
+        if (matches.length === 1 && initialReq) {
             var match = matches[0];
             replaceText(editor, identifier, match.replaceText);
             match.deltas && applyDeltas(editor, match.deltas);
+            this.closeCompletionBox();
         }
         else if (matches.length > 0) {
-            // identifier may not match the java package abbreviation
-            // I want to highlight starting from the class name
             this.showCompletionBox(matches, identifier);
         }
         else {
-            if(typeof barCompleterCont !== 'undefined')
-                barCompleterCont.$ext.style.display = "none";
+            this.closeCompletionBox();
         }
     }
 };
