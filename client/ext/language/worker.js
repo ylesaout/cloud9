@@ -26,7 +26,7 @@ var WARNING_LEVELS = {
 // Leaking into global namespace of worker, to allow handlers to have access
 disabledFeatures = {};
 
-sender.once = EventEmitter.once = function(event, fun) {
+EventEmitter.once = function(event, fun) {
   var _self = this;
   var newCallback = function() {
     fun && fun.apply(null, arguments);
@@ -80,6 +80,7 @@ var LanguageWorker = exports.LanguageWorker = function(sender) {
     this.currentMarkers = [];
     this.$lastAggregateActions = {};
     this.$warningLevel = "info";
+    sender.once = EventEmitter.once;
     this.serverProxy = new ServerProxy(sender);
     
     Mirror.call(this, sender);
@@ -300,7 +301,7 @@ function asyncParForEach(array, fn, callback) {
             }
         }
     }
-    
+
     this.analyze = function(callback) {
         var _self = this;
         this.parse(function(ast) {

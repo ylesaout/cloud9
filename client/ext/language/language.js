@@ -88,7 +88,7 @@ module.exports = ext.register("ext/language/language", {
         outline.hook(this, worker);
         hierarchy.hook(this, worker);
         format.hook(this, worker);
-        
+
         ide.dispatchEvent("language.worker", {worker: worker});
         ide.addEventListener("$event.language.worker", function(callback){
             callback({worker: worker});
