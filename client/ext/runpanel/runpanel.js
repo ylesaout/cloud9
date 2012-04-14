@@ -57,7 +57,7 @@ module.exports = ext.register("ext/runpanel/runpanel", {
             "class": "rundebug"
         });
 
-        apf.document.body.insertMarkup(buttonsMarkup);
+        apf.document.documentElement.insertMarkup(buttonsMarkup);
 
         this.nodes.push(
             mnuRunCfg
@@ -77,10 +77,12 @@ module.exports = ext.register("ext/runpanel/runpanel", {
         });
 
         //Settings Support
-        ide.addEventListener("init.ext/settings/settings", function(e) {
+        /*ide.addEventListener("init.ext/settings/settings", function(e) {
             var heading = e.ext.getHeading("General");
             heading.insertMarkup(markupSettings);
-        });
+        });*/
+
+        require("ext/settings/settings").addSettings("General", markupSettings);
 
         ide.addEventListener("loadsettings", function(e){
             var runConfigs = e.model.queryNode("auto/configurations");
@@ -116,30 +118,32 @@ module.exports = ext.register("ext/runpanel/runpanel", {
             mdlRunConfigurations.load(runConfigs);
         });
 
-        var page = tabEditors.getPage();
-        if (page && page.$model) {
-            var path = page.$model.queryValue("@path").replace(ide.davPrefix, "");
-            mdlRunConfigurations.setQueryValue("config[@curfile]/@path", path);
-            mdlRunConfigurations.setQueryValue("config[@curfile]/@name",
-                path.split("/").pop() + " (active file)");
-        }
-
-        tabEditors.addEventListener("afterswitch", function(e){
-            var page = e.nextPage;
-            var path = page.$model.queryValue("@path").replace(ide.davPrefix, "");
-            mdlRunConfigurations.setQueryValue("config[@curfile]/@path", path);
-            mdlRunConfigurations.setQueryValue("config[@curfile]/@name",
-                path.split("/").pop() + " (active file)");
-        });
-
-        ide.addEventListener("afterfilesave", function(e){
+        ide.addEventListener("init.ext/editors/editors", function(e) {
             var page = tabEditors.getPage();
-            if (page) {
+            if (page && page.$model) {
                 var path = page.$model.queryValue("@path").replace(ide.davPrefix, "");
                 mdlRunConfigurations.setQueryValue("config[@curfile]/@path", path);
                 mdlRunConfigurations.setQueryValue("config[@curfile]/@name",
                     path.split("/").pop() + " (active file)");
             }
+
+            tabEditors.addEventListener("afterswitch", function(e){
+                var page = e.nextPage;
+                var path = page.$model.queryValue("@path").replace(ide.davPrefix, "");
+                mdlRunConfigurations.setQueryValue("config[@curfile]/@path", path);
+                mdlRunConfigurations.setQueryValue("config[@curfile]/@name",
+                    path.split("/").pop() + " (active file)");
+            });
+
+            ide.addEventListener("afterfilesave", function(e){
+                var page = tabEditors.getPage();
+                if (page) {
+                    var path = page.$model.queryValue("@path").replace(ide.davPrefix, "");
+                    mdlRunConfigurations.setQueryValue("config[@curfile]/@path", path);
+                    mdlRunConfigurations.setQueryValue("config[@curfile]/@name",
+                        path.split("/").pop() + " (active file)");
+                }
+            });
         });
 
         var hasBreaked = false;
@@ -179,19 +183,7 @@ module.exports = ext.register("ext/runpanel/runpanel", {
             //var bar = dock.getBars("ext/debugger/debugger", "pgDebugNav")[0];
             //dock.expandBar(bar);
         });
-//        ide.addEventListener("dockpanel.load.settings", function(e){
-//            var state = e.state;
-//
-//            if (_self.autoHidePanel() && !stProcessRunning.active) {
-//                var bar = dock.getBars("ext/debugger/debugger", "pgDebugNav", state)[0];
-//                bar.sections.each(function(section){
-//                    section.buttons.each(function(button){
-//                        if (!button.hidden || button.hidden == -1)
-//                            button.hidden = 1;
-//                    });
-//                });
-//            }
-//        });
+
 
         // When we are not in debug mode and we close a page it goes back to be
         // automatically opened when the debug process starts

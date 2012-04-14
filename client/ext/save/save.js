@@ -24,7 +24,7 @@ module.exports = ext.register("ext/save/save", {
     deps        : [fs],
     offline     : true,
 
-    commands     : {
+    commands    : {
         "quicksave": {hint: "save the currently active file to disk"},
         "saveas": {hint: "save the file to disk with a different filename"},
         "reverttosaved": {hint: "downgrade the currently active file to the last saved version"}
@@ -34,64 +34,64 @@ module.exports = ext.register("ext/save/save", {
     saveBuffer  : {},
 
     hook : function(){
-        if (!self.tabEditors) return;
-
         var _self = this;
-        
-        tabEditors.addEventListener("close", this.$close = function(e) {
-            var at = e.page.$at;
-            if (!at.undo_ptr)
-                at.undo_ptr = at.$undostack[0];
-            var node = e.page.$doc.getNode();
-            if (node && at.undo_ptr && at.$undostack[at.$undostack.length-1] !== at.undo_ptr
-              || !at.undo_ptr && node.getAttribute("changed") == 1
-              && e.page.$doc.getValue()) {
-                ext.initExtension(_self);
-                
-                var pages   = tabEditors.getPages(),
-                currIdx = pages.indexOf(e.page);
-                tabEditors.set(pages[currIdx].id); //jump to file
-                
-                var filename = node.getAttribute("path").replace(ide.workspaceDir, "").replace(ide.davPrefix, "");
-                
-                winCloseConfirm.page = e.page;
-                winCloseConfirm.all  = -100;
-                winCloseConfirm.show();
 
-                fileDesc.$ext.innerHTML =  "<h3>Save " + apf.escapeXML(filename) + "?</h3><div>This file has unsaved changes. Your changes will be lost if you don't save them.</div>";
-                
-                winCloseConfirm.addEventListener("hide", function(){
-                    if (winCloseConfirm.all != -100) {
-                        var f = function(resetUndo){
-                            var page;
-                            if (!(page=winCloseConfirm.page))
-                                return;
-
-                            tabEditors.remove(page, true, page.noAnim);
-                            delete page.noAnim;
-                            if (resetUndo)
-                                page.$at.undo(-1);
-                            delete winCloseConfirm.page;
-                            page.dispatchEvent("aftersavedialogclosed");
-                        };
-
-                        if (winCloseConfirm.all == -200)
-                            _self.quicksave(winCloseConfirm.page, f);
+        ide.addEventListener("init.ext/editors/editors", function(){
+            tabEditors.addEventListener("close", _self.$close = function(e) {
+                var at = e.page.$at;
+                if (!at.undo_ptr)
+                    at.undo_ptr = at.$undostack[0];
+                var node = e.page.$doc.getNode();
+                if (node && at.undo_ptr && at.$undostack[at.$undostack.length-1] !== at.undo_ptr
+                  || !at.undo_ptr && node.getAttribute("changed") == 1
+                  && e.page.$doc.getValue()) {
+                    ext.initExtension(_self);
+    
+                    var pages   = tabEditors.getPages(),
+                    currIdx = pages.indexOf(e.page);
+                    tabEditors.set(pages[currIdx].id); //jump to file
+    
+                    var filename = node.getAttribute("path").replace(ide.workspaceDir, "").replace(ide.davPrefix, "");
+    
+                    winCloseConfirm.page = e.page;
+                    winCloseConfirm.all  = -100;
+                    winCloseConfirm.show();
+    
+                    fileDesc.replaceMarkup("<div><h3>Save " + apf.escapeXML(filename) + "?</h3><div>This file has unsaved changes. Your changes will be lost if you don't save them.</div></div>", {"noLoadingMsg": false});
+    
+                    winCloseConfirm.addEventListener("hide", function(){
+                        if (winCloseConfirm.all != -100) {
+                            var f = function(resetUndo){
+                                var page;
+                                if (!(page=winCloseConfirm.page))
+                                    return;
+    
+                                tabEditors.remove(page, true, page.noAnim);
+                                delete page.noAnim;
+                                if (resetUndo)
+                                    page.$at.undo(-1);
+                                delete winCloseConfirm.page;
+                                page.dispatchEvent("aftersavedialogclosed");
+                            };
+    
+                            if (winCloseConfirm.all == -200)
+                                _self.quicksave(winCloseConfirm.page, f);
+                            else
+                                f(true);
+                            /*winSaveAs.page = winCloseConfirm.page;*/
+                        }
                         else
-                            f(true);
-                        /*winSaveAs.page = winCloseConfirm.page;*/
-                    }
-                    else
-                        tabEditors.dispatchEvent("aftersavedialogcancel");
-
-                    winCloseConfirm.removeEventListener("hide", arguments.callee);
-                });
-                
-                btnYesAll.hide();
-                btnNoAll.hide();
-
-                e.preventDefault();
-            }
+                            tabEditors.dispatchEvent("aftersavedialogcancel");
+    
+                        winCloseConfirm.removeEventListener("hide", arguments.callee);
+                    });
+    
+                    btnYesAll.hide();
+                    btnNoAll.hide();
+    
+                    e.preventDefault();
+                }
+            });
         });
 
         this.nodes.push(ide.barTools.appendChild(new apf.button({
@@ -145,9 +145,8 @@ module.exports = ext.register("ext/save/save", {
     },
 
     init : function(amlNode){
-        var _self = this;
-        this.fileDesc = winCloseConfirm.selectSingleNode("a:vbox");;
-        
+        this.fileDesc = winCloseConfirm.selectSingleNode("a:vbox");
+
         apf.importCssString((this.css || ""));
         winCloseConfirm.onafterrender = function(){
             btnYesAll.addEventListener("click", function(){
@@ -185,11 +184,14 @@ module.exports = ext.register("ext/save/save", {
         ide.dispatchEvent("reload", {doc : tabEditors.getPage().$doc});
     },
 
-    saveall : function(){
-        var pages = tabEditors.getPages();
-        for (var i = 0; i < pages.length; i++) {
-            this.quicksave(pages[i]);
-        }
+    saveall : function() {
+        // previous version of this function used
+        // .forEach(this.quicksave), but that also passes the index parameter (2nd one)
+        // of forEach to the quicksave function.
+        var self = this;
+        tabEditors.getPages().forEach(function (page) {
+            self.quicksave(page);
+        });
     },
 
     saveAllInteractive : function(pages, callback){
@@ -229,12 +231,17 @@ module.exports = ext.register("ext/save/save", {
         });
     },
 
-    quicksave : function(page, callback) {
+    // `silentsave` indicates whether the saving of the file is forced by the user or not.
+    quicksave : function(page, callback, silentsave) {
         if (!page || !page.$at)
             page = tabEditors.getPage();
 
         if (!page)
             return;
+            
+        if (typeof callback !== "function") {
+            callback = null;
+        }
 
         var doc  = page.$doc;
         var node = doc.getNode();
@@ -252,7 +259,7 @@ module.exports = ext.register("ext/save/save", {
         }
 
         if (callback) {
-            ide.addEventListener("afterfilesave", function(e){
+            ide.addEventListener("afterfilesave", function(e) {
                 if (e.node == node) {
                     callback();
                     this.removeEventListener("afterfilesave", arguments.callee);
@@ -269,8 +276,7 @@ module.exports = ext.register("ext/save/save", {
 
         apf.xmldb.setAttribute(node, "saving", "1");
 
-        var _self = this, panel = sbMain.firstChild;
-        panel.setAttribute("caption", "Saving file " + path);
+        var _self = this;
 
         var value = doc.getValue();
 
@@ -285,8 +291,13 @@ module.exports = ext.register("ext/save/save", {
                             : "The error reported was " + extra.message));
             }
 
-            panel.setAttribute("caption", "Saved file " + path);
-            ide.dispatchEvent("afterfilesave", {node: node, doc: doc, value: value});
+            ide.dispatchEvent("afterfilesave", {
+                node: node,
+                doc: doc,
+                value: value,
+                silentsave: silentsave
+            });
+
             ide.dispatchEvent("track_action", {
                 type: "save as filetype",
                 fileType: node.getAttribute("name").split(".").pop(),
@@ -325,7 +336,6 @@ module.exports = ext.register("ext/save/save", {
         apf.xmldb.setAttribute(file, "saving", "1");
 
         var self = this;
-        var panel = sbMain.firstChild;
         var value = page.$doc.getValue();
         fs.saveFile(newPath, value, function(value, state, extra) {
             if (state != apf.SUCCESS) {
@@ -333,7 +343,6 @@ module.exports = ext.register("ext/save/save", {
                   "An error occurred while saving this document",
                   "Please see if your internet connection is available and try again.");
             }
-            panel.setAttribute("caption", "Saved file " + newPath);
 
             var model = page.$model;
             var node = model.getXml();
@@ -346,7 +355,7 @@ module.exports = ext.register("ext/save/save", {
                 doc.setNode(file);
             }
 
-            apf.xmldb.removeAttribute(node, "saving");
+            apf.xmldb.removeAttribute(file, "saving");
 
             if (self.saveBuffer[path]) {
                 delete self.saveBuffer[path];
@@ -371,7 +380,8 @@ module.exports = ext.register("ext/save/save", {
             ide.dispatchEvent("afterfilesave", {
                 node: node,
                 doc: doc,
-                value: value
+                value: value,
+                silentsave: false // It is a forced save, comes from UI
             });
         });
 

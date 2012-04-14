@@ -11,6 +11,7 @@ var ide = require("core/ide");
 var ext = require("core/ext");
 var settings = require("core/settings");
 var markup = require("text!ext/panels/panels.xml");
+var markupSettings =  require("text!ext/panels/settings.xml");
 
 module.exports = ext.register("ext/panels/panels", {
     name   : "Panel Manager",
@@ -289,8 +290,8 @@ module.exports = ext.register("ext/panels/panels", {
         var _self = this;
         
         this.nodes.push(
-            this.group = apf.document.body.appendChild(new apf.group({
-                value : "[{req"+"uire('ext/settings/settings').model}::auto/panels/@active]"
+            this.group = apf.document.documentElement.appendChild(new apf.group({
+                value : "[{req"+"uire('core/settings').model}::auto/panels/@active]"
             })),
             
             barMenu.appendChild(new apf.button({
@@ -364,19 +365,9 @@ module.exports = ext.register("ext/panels/panels", {
             }
             
             if (changed) {
-                xmlSettings.nodeValue = apf.serialize(_self.$settings);
+                xmlSettings.nodeValue = JSON.stringify(_self.$settings);
                 return true;
             }
-        });
-        
-        ide.addEventListener("init.ext/settings/settings", function (e) {
-            var heading = e.ext.getHeading("General");
-            heading.appendChild(new apf.checkbox({
-                "class" : "underlined",
-                value : "[general/@animateui]",
-                skin  : "checkbox_grey",
-                label : "Enable UI Animations"
-            }))
         });
     },
     

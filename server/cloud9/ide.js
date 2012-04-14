@@ -51,12 +51,18 @@ var Ide = module.exports = function(options, httpServer, exts, socket) {
         projectName: options.projectName || this.workspaceDir.split("/").pop(),
         version: options.version,
         extra: options.extra,
-        remote: options.remote
+        remote: options.remote,
+        real: options.real
     };
+    // precalc regular expressions:
+    this.indexRe = new RegExp("^" + util.escapeRegExp(this.options.baseUrl) + "(?:\\/(?:index.html?)?)?$");
+    this.reconnectRe = new RegExp("^" + util.escapeRegExp(this.options.baseUrl) + "\\/\\$reconnect$");
+    this.workspaceRe = new RegExp("^" + util.escapeRegExp(this.options.davPrefix) + "(\\/|$)");
 
     this.$users = {};
-    this.nodeCmd = process.argv[0];
-
+    
+    this.nodeCmd = options.exec || process.argv[0];
+    
     var davOptions = {
         node: this.options.mountDir,
         mount: this.options.davPrefix,
@@ -87,80 +93,18 @@ var Ide = module.exports = function(options, httpServer, exts, socket) {
 
 sys.inherits(Ide, EventEmitter);
 
-Ide.DEFAULT_PLUGINS = [
-    "ext/filesystem/filesystem",
-    "ext/settings/settings",
-    "ext/editors/editors",
-    //"ext/connect/connect",
-    "ext/themes/themes",
-    "ext/themes_default/themes_default",
-    "ext/panels/panels",
-    "ext/dockpanel/dockpanel",
-    "ext/openfiles/openfiles",
-    "ext/tree/tree",
-    "ext/save/save",
-    "ext/recentfiles/recentfiles",
-    "ext/gotofile/gotofile",
-    "ext/newresource/newresource",
-    "ext/undo/undo",
-    "ext/clipboard/clipboard",
-    "ext/searchinfiles/searchinfiles",
-    "ext/searchreplace/searchreplace",
-    "ext/quickwatch/quickwatch",
-    "ext/quicksearch/quicksearch",
-    "ext/gotoline/gotoline",
-    "ext/html/html",
-    "ext/help/help",
-    //"ext/ftp/ftp",
-    "ext/code/code",
-    "ext/statusbar/statusbar",
-    "ext/imgview/imgview",
-    //"ext/preview/preview",
-    "ext/extmgr/extmgr",
-    //"ext/run/run", //Add location rule
-    "ext/runpanel/runpanel", //Add location rule
-    "ext/debugger/debugger", //Add location rule
-    "ext/noderunner/noderunner", //Add location rule
-    "ext/console/console",
-    "ext/consolehints/consolehints",
-    "ext/tabbehaviors/tabbehaviors",
-    "ext/tabsessions/tabsessions",
-    "ext/keybindings/keybindings",
-    "ext/keybindings_default/keybindings_default",
-    "ext/watcher/watcher",
-    "ext/dragdrop/dragdrop",
-    "ext/beautify/beautify",
-    "ext/offline/offline",
-    "ext/stripws/stripws",
-    "ext/testpanel/testpanel",
-    "ext/nodeunit/nodeunit",
-    "ext/zen/zen",
-    "ext/codecomplete/codecomplete",
-    //"ext/autosave/autosave",
-    "ext/vim/vim",
-    "ext/guidedtour/guidedtour",
-    "ext/quickstart/quickstart",
-    "ext/jslanguage/jslanguage",
-    "ext/javalanguage/javalanguage",
-    "ext/build/build",
-    "ext/autotest/autotest",
-    "ext/tabsessions/tabsessions",
-    "ext/closeconfirmation/closeconfirmation",
-    "ext/codetools/codetools",
-    "ext/colorpicker/colorpicker"
-    //"ext/acebugs/acebugs"
-];
+var exts = require("../../client/ext/all");
+
+Ide.DEFAULT_PLUGINS = exts;
 
 exports.DEFAULT_DAVPLUGINS = ["auth", "codesearch", "filelist", "filesearch"];
 
 (function () {
 
     this.handle = function(req, res, next) {
-        var path = Url.parse(req.url).pathname;
-
-        this.indexRe = this.indexRe || new RegExp("^" + util.escapeRegExp(this.options.baseUrl) + "(?:\\/(?:index.html?)?)?$");
-        this.reconnectRe = this.reconnectRe || new RegExp("^" + util.escapeRegExp(this.options.baseUrl) + "\\/\\$reconnect$");
-        this.workspaceRe = this.workspaceRe || new RegExp("^" + util.escapeRegExp(this.options.davPrefix) + "(\\/|$)");
+        if (!req.parsedUrl)
+            req.parsedUrl = Url.parse(req.url);
+        var path = req.parsedUrl.pathname;
 
         if (path.match(this.indexRe)) {
             if (req.method !== "GET")
@@ -193,7 +137,9 @@ exports.DEFAULT_DAVPLUGINS = ["auth", "codesearch", "filelist", "filesearch"];
 
     this.$serveIndex = function(req, res, next) {
         var plugin, _self = this;
-        fs.readFile(__dirname + "/view/ide.tmpl.html", "utf8", function(err, index) {
+        var indexFile = _self.options.real === true ? __dirname + "/view/ide.tmpl.packed.html" : __dirname + "/view/ide.tmpl.html";
+
+        fs.readFile(indexFile, "utf8", function(err, index) {
             if (err)
                 return next(err);
 
@@ -215,7 +161,7 @@ exports.DEFAULT_DAVPLUGINS = ["auth", "codesearch", "filelist", "filesearch"];
                     plugins[plugin] = 1;
 
             var staticUrl = _self.options.staticUrl;
-            var aceScripts = '<script type="text/javascript" data-ace-base="/static/js/worker" src="' + staticUrl + '/support/ace/build/src/ace.js"></script>\n';
+            var aceScripts = '<script type="text/javascript" data-ace-worker-path="/static/js/worker" src="' + staticUrl + '/support/ace/build/src/ace.js"></script>\n';
 
             var replacements = {
                 davPrefix: _self.options.davPrefix,
@@ -230,7 +176,7 @@ exports.DEFAULT_DAVPLUGINS = ["auth", "codesearch", "filelist", "filesearch"];
                 requirejsConfig: _self.options.requirejsConfig,
                 settingsXml: "",
                 offlineManifest: _self.options.offlineManifest,
-                scripts: _self.options.debug ? "" : aceScripts,
+                scripts: (_self.options.debug || _self.options.real) ? "" : aceScripts,
                 projectName: _self.options.projectName,
                 version: _self.options.version
             };
@@ -285,6 +231,7 @@ exports.DEFAULT_DAVPLUGINS = ["auth", "codesearch", "filelist", "filesearch"];
             this.onUserCountChange();
             this.emit("userJoin", user);
         }
+        return user;
     };
 
     this.getUser = function(req) {
@@ -354,6 +301,10 @@ exports.DEFAULT_DAVPLUGINS = ["auth", "codesearch", "filelist", "filesearch"];
         //for (var u in this.$users)
         //    console.log("IDE USER", this.$users[u].uid, this.$users[u].clients);
         this.$users[username] && this.$users[username].broadcast(msg);
+    };
+
+    this.canShutdown = function() {
+        return this.workspace.canShutdown();
     };
 
     this.dispose = function(callback) {

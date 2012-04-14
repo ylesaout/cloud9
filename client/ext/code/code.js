@@ -16,6 +16,7 @@ var HashHandler = require("ace/keyboard/hash_handler").HashHandler;
 var useragent = require("ace/lib/useragent");
 var Document = require("ace/document").Document;
 var Range = require("ace/range").Range;
+var MultiSelectCommands = require("ace/multi_select").commands.defaultCommands;
 var ProxyDocument = require("ext/code/proxydocument");
 var CommandManager = require("ace/commands/command_manager").CommandManager;
 var defaultCommands = require("ace/commands/default_commands").commands;
@@ -54,6 +55,7 @@ var SupportedModes = {
     "application/atom+xml": "xml",
     "application/mathml+xml": "xml",
     "application/x-httpd-php": "php",
+    "application/x-sh": "sh",
     "text/x-script.python": "python",
     "text/x-script.ruby": "ruby",
     "text/x-script.perl": "perl",
@@ -112,6 +114,7 @@ var contentTypes = {
     "cxx": "text/x-c",
     "h": "text/x-c",
     "hh": "text/x-c",
+    "hpp": "text/x-c",
 
     "cs": "text/x-csharp",
 
@@ -137,7 +140,10 @@ var contentTypes = {
 
     "ps1": "text/x-script.powershell",
     "cfm": "text/x-coldfusion",
-    "sql": "text/x-sql"
+    "sql": "text/x-sql",
+
+    "sh": "application/x-sh",
+    "bash": "application/x-sh"
 };
 
 module.exports = ext.register("ext/code/code", {
@@ -297,11 +303,7 @@ module.exports = ext.register("ext/code/code", {
     hook: function() {
         var _self = this;
 
-        //Settings Support
-        ide.addEventListener("init.ext/settings/settings", function(e) {
-            var heading = e.ext.getHeading("Code Editor");
-            heading.insertMarkup(markupSettings);
-        });
+        require("ext/settings/settings").addSettings("Code Editor", markupSettings);
 
         ide.addEventListener("loadsettings", function(e) {
             var model = e.model;
@@ -322,12 +324,16 @@ module.exports = ext.register("ext/code/code", {
                   .attr("wraplimitmax", "")
                   .attr("gutter", "true")
                   .attr("folding", "true")
+                  .attr("newlinemode", "auto")
                   .attr("highlightselectedword", "true")
                   .attr("autohidehorscrollbar", "true").node();
 
                 var editors = apf.createNodeFromXpath(model.data, "editors");
                 apf.xmldb.appendChild(editors, node);
             }
+
+            if (!model.queryNode("editors/code/@animatedscroll"))
+                model.setQueryValue("editors/code/@animatedscroll", "true");
 
             // pre load theme
             var theme = e.model.queryValue("editors/code/@theme");
@@ -346,7 +352,7 @@ module.exports = ext.register("ext/code/code", {
                 if (typeof mdlDbgStack != "undefined" && mdlDbgStack.data && e.node
                   && (!e.node.hasAttribute("scriptid") || !e.node.getAttribute("scriptid"))
                   && e.node.hasAttribute("scriptname") && e.node.getAttribute("scriptname")) {
-                    var nodes = mdlDbgStack.data.selectNodes("//frame[@script='" + e.node.getAttribute("scriptname").replace(ide.workspaceDir + "/", "") + "']");
+                    var nodes = mdlDbgStack.data.selectNodes('//frame[@script="' + e.node.getAttribute("scriptname").replace(ide.workspaceDir + "/", "").replace(/"/g, "&quot;") + '"]');
                     if (nodes.length) {
                         e.node.setAttribute("scriptid", nodes[0].getAttribute("scriptid"));
                     }
@@ -366,9 +372,10 @@ module.exports = ext.register("ext/code/code", {
 
         this.ceEditor = this.amlEditor = ceEditor;
         ceEditor.$editor.commands = this.commandManager;
+        ceEditor.$editor.commands.addCommands(MultiSelectCommands);
 
         // preload common language modes
-        var noop = function() {};
+        var noop = function() {}; 
         ceEditor.getMode("javascript", noop);
         ceEditor.getMode("html", noop);
         ceEditor.getMode("css", noop);
@@ -393,16 +400,7 @@ module.exports = ext.register("ext/code/code", {
         });
 
         this.nodes.push(
-            //Add a panel to the statusbar showing whether the insert button is pressed
-            sbMain.appendChild(new apf.section({
-                caption : "{ceEditor.insert}"
-            })),
-
-            //Add a panel to the statusbar showing the length of the document
-            sbMain.appendChild(new apf.section({
-                caption : "Length: {ceEditor.value.length}"
-            })),
-
+            mnuView.appendChild(new apf.divider()),
             mnuView.appendChild(menuSyntaxHighlight)
         );
 

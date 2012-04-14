@@ -120,10 +120,22 @@ module.exports = ext.register("ext/console/console", {
                 this.write("Working directory changed.");
             }
         },
+        
         error: function(message) {
             Logger.log(message.body);
             Logger.log("", "divider");
         },
+        
+        /**
+         * Info does the same as error in this case
+         * but it's here for the future, we might want to distinguise these
+         * on colors or something...
+         */
+        info: function (message) {
+            Logger.log(message.body);
+            Logger.log("", "divider");
+        },
+        
         __default__: function(message) {
             var res = message.body;
             if (res) {
@@ -148,8 +160,11 @@ module.exports = ext.register("ext/console/console", {
     },
 
     clear: function() {
-        if (txtOutput)
-            txtOutput.clear();
+        if (txtConsole) {
+            txtConsole.clear();
+        }
+        
+        return false;
     },
 
     switchconsole : function() {
@@ -221,7 +236,11 @@ module.exports = ext.register("ext/console/console", {
                 command: cmd,
                 argv: argv,
                 line: line,
-                cwd: this.getCwd()
+                cwd: this.getCwd(),
+                // the requireshandling flag indicates that this message cannot
+                // be silently ignored by the server.
+                // An error event should be thrown if no plugin handles this message.
+                requireshandling: true
             };
 
             if (cmd.trim() === "npm")
@@ -240,6 +259,8 @@ module.exports = ext.register("ext/console/console", {
 
     onMessage: function(e) {
         var message = e.message;
+        if (!message.type)
+            return;
         if (message.type === "node-data")
             return Logger.logNodeStream(message.data, message.stream, true, ide);
 
@@ -270,15 +291,30 @@ module.exports = ext.register("ext/console/console", {
 
         return "[" + u + "@cloud9]:" + this.$cwd + "$" + ((" " + suffix) || "");
     },
+    
+    hook: function() {
+        var _self = this;
+        // Listen for new extension registrations to add to the
+        // hints
+        ide.addEventListener("ext.register", function(e){
+            if (e.ext.commands)
+                apf.extend(_self.allCommands, e.ext.commands);
+        });
+
+        ext.initExtension(this);
+    },
 
     init: function(amlNode){
+
         var _self = this;
         this.panel = tabConsole;
         this.$cwd  = "/workspace"; // code smell
 
         apf.importCssString(this.css);
+        
         // Append the console window at the bottom below the tab
         mainRow.appendChild(winDbgConsole);
+        winDbgConsole.previousSibling.hide();
 
         stProcessRunning.addEventListener("activate", function() {
             _self.showOutput();
@@ -329,7 +365,10 @@ module.exports = ext.register("ext/console/console", {
         });
 
         tabConsole.addEventListener("afterswitch", function(e){
-            settings.model.setQueryValue("auto/console/@active", e.nextPage.name)
+            settings.model.setQueryValue("auto/console/@active", e.nextPage.name);
+            setTimeout(function(){
+                txtConsoleInput.focus();
+            });
         });
 
         winDbgConsole.previousSibling.addEventListener("dragdrop", function(e){
@@ -383,7 +422,10 @@ module.exports = ext.register("ext/console/console", {
                 input.setValue("");
         };
         this.keyEvents[KEY_CR] = function(input) {
-            _self.evalCmd(input.getValue());
+            var inputVal = input.getValue().trim();
+            if (inputVal === "/?")
+                return false;
+            _self.evalCmd(inputVal);
             input.setValue("");
         };
 
@@ -395,7 +437,7 @@ module.exports = ext.register("ext/console/console", {
             return;
         this.maximized = true;
 
-        apf.document.body.appendChild(winDbgConsole);
+        apf.document.documentElement.appendChild(winDbgConsole);
         winDbgConsole.setAttribute('anchors', '0 0 0 0');
         this.lastZIndex = winDbgConsole.$ext.style.zIndex;
         winDbgConsole.removeAttribute('height');
@@ -438,7 +480,7 @@ module.exports = ext.register("ext/console/console", {
                 height: this.height,
                 dbgVisibleMethod: "show",
                 chkExpandedMethod: "check",
-                animFrom: 65,
+                animFrom: this.height*0.95,
                 animTo: this.height > this.minHeight ? this.height : this.minHeight,
                 animTween: "easeOutQuint"
             };
@@ -448,7 +490,7 @@ module.exports = ext.register("ext/console/console", {
         }
         else {
             cfg = {
-                height: 41,
+                height: 34,
                 dbgVisibleMethod: "hide",
                 chkExpandedMethod: "uncheck",
                 animFrom: this.height > this.minHeight ? this.height : this.minHeight,

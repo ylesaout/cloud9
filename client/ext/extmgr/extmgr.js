@@ -69,7 +69,7 @@ module.exports = ext.register("ext/extmgr/extmgr", {
             }
 
             eNode = apf.createNodeFromXpath(e.model.data, "auto/extensions");
-            var userExtensions = mdlExt.queryNodes("plugin[@userext='1']");
+            var userExtensions = ext.model.queryNodes("plugin[@userext='1']");
             for (var u = 0; u < userExtensions.length; u++) {
                 var copy = apf.xmldb.cleanNode(userExtensions[u].cloneNode(false));
                 eNode.appendChild(copy);
@@ -88,7 +88,7 @@ module.exports = ext.register("ext/extmgr/extmgr", {
                 tbModuleName.clear();
             }
             require([path], function() {
-                var extNode = mdlExt.queryNode("plugin[@path='" + path + "']");
+                var extNode = ext.model.queryNode("plugin[@path='" + path + "']");
                 if (extNode)
                     apf.xmldb.setAttribute(extNode, "userext", "1");
                 settings.save();
@@ -105,8 +105,41 @@ module.exports = ext.register("ext/extmgr/extmgr", {
         var extension = require(extPath);
 
         if(ext.unregister(extension)) {
-            mdlExt.removeXml(mdlExt.queryNode("plugin[@path='" + extPath + "']"));
+            ext.model.removeXml(ext.model.queryNode("plugin[@path='" + extPath + "']"));
             settings.save();
+        }
+    },
+
+    enableExt : function(path) {
+        ext.enableExt(path);
+
+        if (tabExtMgr.activepage === 0)
+            btnUserExtEnable.setAttribute("caption", "Disable");
+        else
+            btnDefaultExtEnable.setAttribute("caption", "Disable");
+    },
+
+    disableExt : function(path) {
+        ext.disableExt(path);
+
+        if (tabExtMgr.activepage === 0)
+            btnUserExtEnable.setAttribute("caption", "Enable");
+        else
+            btnDefaultExtEnable.setAttribute("caption", "Enable");
+    },
+
+    updateEnableBtnState : function() {
+        if (tabExtMgr.activepage === 0) {
+            if (dgExtUser.selected.getAttribute("enabled") === "1")
+                btnUserExtEnable.setAttribute("caption", "Disable");
+            else
+                btnUserExtEnable.setAttribute("caption", "Enable");
+        }
+        else {
+            if (dgExt.selected.getAttribute("enabled") === "1")
+                btnDefaultExtEnable.setAttribute("caption", "Disable");
+            else
+                btnDefaultExtEnable.setAttribute("caption", "Enable");
         }
     },
 

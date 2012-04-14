@@ -28,7 +28,7 @@ var css = require("text!ext/language/language.css");
 var lang = require("ace/lib/lang");
 var keyhandler = require("ext/language/keyhandler");
 
-var settings = require("text!ext/language/settings.xml");
+var markupSettings = require("text!ext/language/settings.xml");
 var extSettings = require("ext/settings/settings");
 
 
@@ -89,10 +89,37 @@ module.exports = ext.register("ext/language/language", {
         hierarchy.hook(this, worker);
         format.hook(this, worker);
 
-        ide.dispatchEvent("language.worker", {worker: worker});
-        ide.addEventListener("$event.language.worker", function(callback){
-            callback({worker: worker});
-        });
+        // We have to wait until the paths for ace are set - a nice module system will fix this
+        ide.addEventListener("extload", function(){
+            var worker = _self.worker = new WorkerClient(["treehugger", "ext", "ace", "c9"], "worker.js", "ext/language/worker", "LanguageWorker");
+            complete.setWorker(worker);
+
+            //ide.addEventListener("init.ext/code/code", function(){
+            ide.addEventListener("afteropenfile", function(event){
+                if (!event.node)
+                    return;
+                if (!editors.currentEditor || !editors.currentEditor.ceEditor) // No editor, for some reason
+                    return;
+                ext.initExtension(_self);
+                var path = event.node.getAttribute("path");
+                worker.call("switchFile", [path, editors.currentEditor.ceEditor.syntax, event.doc.getValue()]);
+                event.doc.addEventListener("close", function() {
+                    worker.emit("documentClose", {data: path});
+                });
+                // This is necessary to know which file was opened last, for some reason the afteropenfile events happen out of sequence
+                deferred.cancel().schedule(100);
+            });
+
+            // Language features
+            marker.hook(_self, worker);
+            complete.hook(_self, worker);
+            refactor.hook(_self, worker);
+
+            ide.dispatchEvent("language.worker", {worker: worker});
+            ide.addEventListener("$event.language.worker", function(callback){
+                callback({worker: worker});
+            });
+        }, true);
 
         ide.addEventListener("init.ext/settings/settings", function (e) {
             var heading = e.ext.getHeading("Language Support");
@@ -122,14 +149,17 @@ module.exports = ext.register("ext/language/language", {
           console.log("language: ", message);
           worker.emit("serverProxy", {data: message});
         });
-	},
+        require("ext/settings/settings").addSettings("Language Support", markupSettings );
+    },
 
     init : function() {
         var _self = this;
         var worker = this.worker;
         apf.importCssString(css);
-        if (!editors.currentEditor || !editors.currentEditor.ceEditor)
+        if (!editors.currentEditor || !editors.currentEditor.ceEditor) {
             return;
+        }
+        
         this.editor = editors.currentEditor.ceEditor.$editor;
         this.$onCursorChange = this.onCursorChangeDefer.bind(this);
         this.editor.selection.on("changeCursor", this.$onCursorChange);
@@ -151,7 +181,7 @@ module.exports = ext.register("ext/language/language", {
             }, 100);
         });
 
-        this.editor.addEventListener("change", function(e) {
+        this.editor.on("change", function(e) {
             e.range = {
                 start: e.data.range.start,
                 end: e.data.range.end
@@ -166,10 +196,12 @@ module.exports = ext.register("ext/language/language", {
 
         // Monkeypatching ACE's JS mode to disable worker
         // this will be handled by C9's worker
-        ceEditor.getMode("javascript", function(mode) {
-            mode.createWorker = function() {
-                return null;
-            };
+        ceEditor.addEventListener("loadmode", function(e) {
+            if (e.name === "ace/mode/javascript") {
+                e.mode.createWorker = function() {
+                    return null;
+                };
+            }
         });
     },
 
@@ -232,7 +264,12 @@ module.exports = ext.register("ext/language/language", {
     },
 
     registerLanguageHandler: function(modulePath, className) {
-        this.worker.call("register", [modulePath, className]);
+        var _self = this;
+
+        // We have to wait until the paths for ace are set - a nice module system will fix this
+        ide.addEventListener("extload", function(){
+            _self.worker.call("register", [modulePath, className]);
+        });
     },
 
     onCursorChangeDefer: function() {

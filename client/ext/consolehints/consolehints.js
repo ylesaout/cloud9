@@ -91,6 +91,12 @@ module.exports = ext.register("ext/consolehints/consolehints", {
             apf.addListener(winHints, "mousemove", mouseHandler.bind(_self));
             apf.addListener(winHints, "click", _self.click.bind(_self));
             
+            apf.addListener(document, "click", function(e){
+                var node = e.target;
+                if (node.parentNode != winHints || node != winHints)
+                    _self.hide();
+            });
+            
             Console.messages.commandhints = function(message) {
                 var cmds = message.body;
                 for (var cmd in cmds)
@@ -110,7 +116,7 @@ module.exports = ext.register("ext/consolehints/consolehints", {
                 });
             }, 1000);
             
-            txtConsoleInput.addEventListener("blur", function(e) { _self.hide(); });
+            //txtConsoleInput.addEventListener("blur", function(e) { _self.hide(); });
             txtConsoleInput.addEventListener("keyup", function(e) {
                 // Ignore up/down cursor arrows here
                 if (e.keyCode === 38 || e.keyCode === 40 || e.keyCode === 9) return;
@@ -122,6 +128,12 @@ module.exports = ext.register("ext/consolehints/consolehints", {
                         _self.hide();
                     }
                 };
+
+                // dismiss on escape, else cliValue executes below
+                if (e.keyCode === 27) {
+                    _self.hide();
+                    return;
+                }
     
                 var cliValue = e.currentTarget.getValue();
                 if (cliValue)
@@ -143,10 +155,17 @@ module.exports = ext.register("ext/consolehints/consolehints", {
             Object.keys(redefinedKeys).forEach(function(keyCode) {
                 var previousKey = Console.keyEvents[keyCode];
                 Console.keyEvents[keyCode] = function(target) {
-                    if (winHints.style.display === "none" && previousKey)
+                    if (winHints.style.display === "none" && previousKey) {
                         previousKey(target);
-                    else
-                        _self[redefinedKeys[keyCode]].call(_self);
+                    }
+                    else {
+                        // try executing the redefined mapping
+                        // if it returns false, then execute the old func
+                        if (!_self[redefinedKeys[keyCode]].call(_self)) {
+                            previousKey(target);
+                            _self.hide();
+                        }
+                    }
                 };
             });
         };
@@ -188,6 +207,8 @@ module.exports = ext.register("ext/consolehints/consolehints", {
         winHints.style.display = "none";
         winHints.visible = false;
         selectedHint = null;
+        
+        return true;
     },
     click: function(e) {
         var node = e.target;
@@ -208,7 +229,7 @@ module.exports = ext.register("ext/consolehints/consolehints", {
         else
             cliValue += cmdName;
 
-        txtConsoleInput.setValue(cliValue);
+        txtConsoleInput.setValue(cliValue.replace("/?", ""));
         txtConsoleInput.focus();
 
         var input = txtConsoleInput.querySelector("input");
@@ -274,15 +295,21 @@ module.exports = ext.register("ext/consolehints/consolehints", {
         txtConsoleInput.setValue(cliValue);
         // In order to avoid default blurring behavior for TAB
         setTimeout(function() { txtConsoleInput.focus(); }, 50);
+        
+        return true;
     },
     onEnterKey: function() {
+        var handled = false;
         var hintNodes = winHints.childNodes;
         for (var i = 0, l = hintNodes.length; i < l; ++i) {
             if (hintNodes[i].className === "selected") {
                 this.click({ target: hintNodes[i] });
+                handled = true;
                 break;
             }
         }
+        
+        return handled;
     },
     selectUp: function() {
         var newHint = selectedHint - 1;
@@ -290,6 +317,7 @@ module.exports = ext.register("ext/consolehints/consolehints", {
             newHint = winHints.childNodes.length - 1;
 
         this.select(newHint);
+        return true;
     },
     selectDown: function() {
         var newHint = selectedHint + 1;
@@ -297,6 +325,7 @@ module.exports = ext.register("ext/consolehints/consolehints", {
             newHint = 0;
 
         this.select(newHint);
+        return true;
     },
     select: function(hint) {
         clearTimeout(hintsTimer);

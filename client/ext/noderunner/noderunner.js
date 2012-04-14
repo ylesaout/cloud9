@@ -33,8 +33,9 @@ module.exports = ext.register("ext/noderunner/noderunner", {
 
     NODE_VERSION: "auto",
 
-    init : function(amlNode){
+    init : function(){
         var _self = this;
+        ide.addEventListener("socketConnect", this.onConnect.bind(this));
         ide.addEventListener("socketDisconnect", this.onDisconnect.bind(this));
         ide.addEventListener("socketMessage", this.onMessage.bind(this));
 
@@ -59,10 +60,11 @@ module.exports = ext.register("ext/noderunner/noderunner", {
             return false;
         });
 
+        this.nodePid = null;
+
         ide.addEventListener("loadsettings", function(e){
             _self.NODE_VERSION = e.model.queryValue("auto/node-version/@version") || "auto";
         });
-        //require('ext/settings/settings').model
     },
 
     $onDebugProcessActivate : function() {
@@ -103,9 +105,14 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                 break;
 
             case "state":
+                this.nodePid = message.processRunning || 0;
+
+                stDebugProcessRunning.setProperty("active", !!message.debugClient);
+                stProcessRunning.setProperty("active", !!message.processRunning);
 
                 stDebugProcessRunning.setProperty("active", message.debugClient || message.nodeDebugClient);
                 stProcessRunning.setProperty("active", message.processRunning || message.nodeProcessRunning || message.pythonProcessRunning || message.javaProcessRunning);
+
                 dbgNode.setProperty("strip", message.workspaceDir + "/");
                 ide.dispatchEvent("noderunnerready");
                 break;
@@ -144,7 +151,7 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                     apf.ajax("/debug", {
                         method      : "POST",
                         contentType : "application/json",
-                        data        : apf.serialize({
+                        data        : JSON.stringify({
                             agent   : navigator.userAgent,
                             type    : "C9 SERVER EXCEPTION",
                             code    : e.code,
@@ -157,6 +164,10 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                 ide.send({"command": "state"});
                 break;
         }
+    },
+
+    onConnect : function() {
+        ide.send({"command": "state"});
     },
 
     onDisconnect : function() {
@@ -198,7 +209,8 @@ module.exports = ext.register("ext/noderunner/noderunner", {
 
         ide.send({
             "command": "kill",
-            "runner"  : ddRunnerSelector.value // Explicit addition; trying to affect as less logic as possible for now...
+            "runner"  : ddRunnerSelector.value, // Explicit addition; trying to affect as less logic as possible for now...
+            "pid"    : this.nodePid
         });
     },
 
