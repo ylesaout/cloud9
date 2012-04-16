@@ -60,24 +60,6 @@ module.exports = ext.register("ext/language/language", {
             _self.setPath();
         });
 
-        //ide.addEventListener("init.ext/code/code", function(){
-        ide.addEventListener("afteropenfile", function(event){
-            if (!event.node)
-                return;
-            if (!editors.currentEditor || !editors.currentEditor.ceEditor) // No editor, for some reason
-                return;
-            ext.initExtension(_self);
-            var path = event.node.getAttribute("path");
-            var editor = editors.currentEditor.ceEditor.$editor;
-            worker.call("switchFile", [path, editor.syntax, event.doc.getValue(), window.cloud9config.projectName]);
-            event.doc.addEventListener("close", function() {
-                worker.emit("documentClose", {data: path});
-            });
-            
-            // This is necessary to know which file was opened last, for some reason the afteropenfile events happen out of sequence
-            deferred.cancel().schedule(100);
-        });
-
         // We have to wait until the paths for ace are set - a nice module system will fix this
         ide.addEventListener("extload", function(){
             var worker = _self.worker = new WorkerClient(["treehugger", "ext", "ace", "c9"], "worker.js", "ext/language/worker", "LanguageWorker");
