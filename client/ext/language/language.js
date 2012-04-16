@@ -60,9 +60,6 @@ module.exports = ext.register("ext/language/language", {
             _self.setPath();
         });
 
-        var worker = this.worker = new WorkerClient(["treehugger", "ext", "ace", "c9"], "worker.js", "ext/language/worker", "LanguageWorker");
-        complete.setWorker(worker);
-
         //ide.addEventListener("init.ext/code/code", function(){
         ide.addEventListener("afteropenfile", function(event){
             if (!event.node)
@@ -81,21 +78,13 @@ module.exports = ext.register("ext/language/language", {
             deferred.cancel().schedule(100);
         });
 
-        // Language features
-        marker.hook(this, worker);
-        complete.hook(8, worker);
-        refactor.hook(this, worker);
-        outline.hook(this, worker);
-        hierarchy.hook(this, worker);
-        format.hook(this, worker);
-
         // We have to wait until the paths for ace are set - a nice module system will fix this
         ide.addEventListener("extload", function(){
             var worker = _self.worker = new WorkerClient(["treehugger", "ext", "ace", "c9"], "worker.js", "ext/language/worker", "LanguageWorker");
             complete.setWorker(worker);
 
             //ide.addEventListener("init.ext/code/code", function(){
-            ide.addEventListener("afteropenfile", function(event){
+            ide.addEventListener("afteropenfile", function(event) {
                 if (!event.node)
                     return;
                 if (!editors.currentEditor || !editors.currentEditor.ceEditor) // No editor, for some reason
@@ -114,6 +103,38 @@ module.exports = ext.register("ext/language/language", {
             marker.hook(_self, worker);
             complete.hook(_self, worker);
             refactor.hook(_self, worker);
+            outline.hook(_self, worker);
+            hierarchy.hook(_self, worker);
+            format.hook(_self, worker);
+
+            worker.on("serverProxy", function(e) {
+                console.log("proxyMessage", e.data);
+                ide.send(JSON.stringify(e.data));
+            });
+
+            worker.on("commandRequest", function(e) {
+                var cmd = e.data;
+                if (cmd.command == "save") {
+                  save.quicksave(tabEditors.getPage(), function() {
+                    worker.emit("commandComplete", {
+                     data: {
+                      command: cmd.command,
+                      success: true
+                    }});
+                  });
+                }
+            });
+
+            // Language features
+            marker.hook(_self, worker);
+            complete.hook(_self, worker);
+            refactor.hook(_self, worker);
+
+            ide.addEventListener("socketMessage", function(e) {
+                var message = e.message;
+                console.log("language: ", message);
+                worker.emit("serverProxy", {data: message});
+            });
 
             ide.dispatchEvent("language.worker", {worker: worker});
             ide.addEventListener("$event.language.worker", function(callback){
@@ -124,30 +145,6 @@ module.exports = ext.register("ext/language/language", {
         ide.addEventListener("init.ext/settings/settings", function (e) {
             var heading = e.ext.getHeading("Language Support");
             heading.insertMarkup(settings);
-        });
-        
-        worker.on("serverProxy", function(e) {
-            console.log("proxyMessage", e.data);
-            ide.send(JSON.stringify(e.data));
-        });
-        
-        worker.on("commandRequest", function(e) {
-            var cmd = e.data;
-            if (cmd.command == "save") {
-              save.quicksave(tabEditors.getPage(), function() {
-                worker.emit("commandComplete", {
-                 data: {
-                  command: cmd.command,
-                  success: true
-                }});
-              });
-            }
-        });
-        
-        ide.addEventListener("socketMessage", function(e) {
-          var message = e.message;
-          console.log("language: ", message);
-          worker.emit("serverProxy", {data: message});
         });
         require("ext/settings/settings").addSettings("Language Support", markupSettings );
     },
