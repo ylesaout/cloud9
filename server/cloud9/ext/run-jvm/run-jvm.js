@@ -32,6 +32,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
     };
 
     this.JAVA_DEBUG_PORT = 9000;
+    this.WEBAPP_START_PORT = 10000;
 
     this.command = function(user, message, client) {
         if (!(/java|jpy|jrb|groovy|js-rhino/.test(message.runner)))
@@ -113,7 +114,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
                     if (err)
                         return _self.$error("Could not find a free port", 1, err);
 
-                    var jvmInstance = new WebJVMInstance(cwd, 'j2ee', 'localhost', port);
+                    jvmInstance = new WebJVMInstance(cwd, 'j2ee', 'localhost', port);
                     jvmInstance.on('lifecycle:started', function() {
                         // TODO, notify the client that the server is now started
                         // _self.ide.broadcast(JSON.stringify({}), _self.name);
