@@ -8,6 +8,7 @@ var Path              = require("path"),
     Plugin            = require("cloud9/plugin"),
     sys               = require("sys"),
     netutil           = require("cloud9/netutil"),
+    JavaDebugProxy    = require("./javadebugproxy"),
     jvm               = require("jvm-run/lib/jvm_instance"),
     JVMInstance       = jvm.JVMInstance,
     ScriptJVMInstance = jvm.ScriptJVMInstance,
@@ -27,11 +28,12 @@ sys.inherits(JVMRuntimePlugin, Plugin);
     this.init = function() {
         var _self = this;
         this.workspace.getExt("state").on("statechange", function(state) {
-            state.javaProcessRunning = !!_self.instance;
+            state.javaProcessRunning = !! _self.instance;
+            state.debugClient = !! _self.debugClient;
         });
     };
 
-    this.JAVA_DEBUG_PORT = 9000;
+    this.JAVA_DEBUG_PORT = 6000;
     this.WEBAPP_START_PORT = 10000;
 
     this.command = function(user, message, client) {
@@ -43,11 +45,29 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         var cmd = (message.command || "").toLowerCase(),
             res = true;
         switch (cmd) {
-            case "run": case "rundebug": case "rundebugbrk": // We don"t debug python just yet.
+            case "run":
                 this.$run(message, client);
                 break;
+            case "rundebug":
+            case "rundebugbrk":
+                netutil.findFreePort(this.JAVA_DEBUG_PORT, this.JAVA_DEBUG_PORT + 1000, "localhost", function(err, port) {
+                    if (err) return _self.$error("Could not find a free port", 9, message);
+
+                    _self.$debug(message, port);
+                });
+                break;
+            case "debugnode":
+                if (!this.javaDebugProxy)
+                    this.$error("No debug session running!", 6, message);
+                else
+                    this.javaDebugProxy.send(message.body);
+                break;
+            case "debugattachnode":
+                if (this.javaDebugProxy)
+                    this.ide.broadcast('{"type": "node-debug-ready"}', _self.name);
+                break;
             case "kill":
-                this.$kill();
+                this.$procExit(true);
                 break;
             default:
                 res = false;
@@ -56,32 +76,87 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         return res;
     };
 
-    this.$kill = function() {
-        var instance = this.instance;
-        if (!instance)
-            return;
-        try {
-            instance.kill();
-        }
-        catch(e) {}
+    this.$error = function(message, code, data) {
+        this.ide.broadcast(JSON.stringify({
+            "type": "error",
+            "message": message,
+            "code": code || 0,
+            "data": data || ""
+        }), this.name);
+    };
+
+    // TODO: Maybe refactor to run the debug process from here
+    // Only debug pure java console projects
+    this.$debug = function (message, port) {
+        var _self = this;
+
+        var seq = 8081;
+        var debugClient = this.debugClient = new JdbClient('localhost', this.JAVA_DEBUG_PORT);
+
+        var appPath = '/Users/eweda/workspace/cloud9/support/lib-javadebug/test';
+        var debugOptions = {
+            main_class: 'timeloop',
+            port: port,
+            host: 'localhost',
+            classpath: appPath,
+            sourcepath: appPath
+        };
+
+        if (this.javaDebugProxy)
+            return this.$error("Debug session already running", 4, message);
+
+        this.javaDebugProxy = new JavaDebugProxy(port);
+        this.javaDebugProxy.on("message", function(body) {
+            var msg = {
+                "type": "node-debug",
+                "body": body
+            };
+            _self.ide.broadcast(JSON.stringify(msg), _self.name);
+        });
+
+        this.javaDebugProxy.on("connection", function() {
+            _self.ide.broadcast('{"type": "node-debug-ready"}', _self.name);
+        });
+
+        this.javaDebugProxy.on("end", function(err) {
+            // in case an error occured, send a message back to the client
+            if (err) {
+                // TODO: err should be an exception instance with more fields
+                // TODO: in theory a "node-start" event might be sent after this event (though
+                //       extremely unlikely). Deal with all this event mess
+                _self.send({"type": "node-exit-with-error", errorMessage: err}, null, _self.name);
+                // the idea is that if the "node-exit-with-error" event is dispatched,
+                // then the "node-exit" event is not.
+                if (_self.child)
+                    _self.child.removeAllListeners("exit");
+                // in this case the debugger process is still running. We need to
+                // kill that process, while not interfering with other parts of the source.
+                _self.$kill();
+                _self.$procExit(true);
+            }
+            if (_self.javaDebugProxy === this)
+                delete _self.javaDebugProxy;
+        });
+
+        this.javaDebugProxy.connect();
     };
 
     this.$run = function(message, client) {
         var _self = this;
 
         if (this.instance)
-            return _self.workspace.error("Child process already running!", 1, message);
+            return _self.$error("Child process already running!", 1, message);
 
         var file = _self.workspace.workspaceDir + "/" + message.file;
 
         Path.exists(file, function(exists) {
            if (!exists)
-               return _self.workspace.error("File does not exist: " + message.file, 2, message);
+               return _self.$error("File does not exist: " + message.file, 2, message);
 
            var cwd = _self.ide.workspaceDir + "/" + (message.cwd || "");
            Path.exists(cwd, function(exists) {
                if (!exists)
-                   return _self.workspace.error("cwd does not exist: " + message.cwd, 3, message);
+                   return _self.$error("cwd does not exist: " + message.cwd, 3, message);
                 // lets check what we need to run
                 var args = [].concat(file).concat(message.args || []);
                 // message.runner = "java", "jy", "jrb", "groovy", "js-rhino"
@@ -174,10 +249,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
             jvmInstance.start();
 
             jvmInstance.on("exit", function(code) {
-                _self.ide.broadcast(JSON.stringify({"type": "node-exit"}), _self.name);
-                _self.debugClient = false;
-                delete _self.instance;
-                _self.workspace.getExt("state").publishState();
+                _self.$procExit();
             });
         }
 
@@ -195,8 +267,33 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         return jvmInstance;
     };
 
+    this.$procExit = function(noBroadcast) {
+        if (!noBroadcast)
+            this.ide.broadcast(JSON.stringify({"type": "node-exit"}), this.name);
+
+        if (this.instance) {
+            try {
+                this.instance.kill();
+            }
+            catch(e) {}
+        }
+
+        if (this.debugClient) {
+            // TODO disconnect if not already disconnected
+            this.debugClient.emitter.removeAllListeners('event:output');
+            this.debugClient.emitter.removeAllListeners('event:error');
+            this.debugClient.emitter.removeAllListeners('event:break');
+            this.debugClient.disconnect();
+        }
+        this.workspace.getExt("state").publishState();
+
+        delete this.instance;
+        delete this.debugClient;
+        delete this.javaDebugProxy;
+    };
+
     this.dispose = function(callback) {
-        this.$kill();
+        this.$procExit();
         callback();
     };
 
