@@ -4938,52 +4938,167 @@ exports.parenFreeMode = false;
  * delegate messages it receives to the various handlers that have registered
  * themselves with the worker.
  */
-define('ext/language/worker', ['require', 'exports', 'module' , 'ace/lib/oop', 'ace/worker/mirror', 'treehugger/tree'], function(require, exports, module) {
+define('ext/language/worker', ['require', 'exports', 'module' , 'ace/lib/oop', 'ace/worker/mirror', 'treehugger/tree', 'ace/lib/event_emitter'], function(require, exports, module) {
 
 var oop = require("ace/lib/oop");
 var Mirror = require("ace/worker/mirror").Mirror;
 var tree = require('treehugger/tree');
+var EventEmitter = require("ace/lib/event_emitter").EventEmitter;
 
+var WARNING_LEVELS = {
+    error: 3,
+    warning: 2,
+    info: 1
+};
 
 // Leaking into global namespace of worker, to allow handlers to have access
 disabledFeatures = {};
+
+EventEmitter.once = function(event, fun) {
+  var _self = this;
+  var newCallback = function() {
+    fun && fun.apply(null, arguments);
+    _self.removeEventListener(event, newCallback);
+  };
+  this.addEventListener(event, newCallback);
+};
+
+var ServerProxy = function(sender) {
+
+  this.emitter = Object.create(EventEmitter);
+  this.emitter.emit = this.emitter._dispatchEvent;
+
+  this.send = function(data) {
+      sender.emit("serverProxy", data);
+  };
+  
+  this.once = function(messageType, messageSubtype, callback) {
+    var channel = messageType;
+    if (messageSubtype)
+       channel += (":" + messageSubtype);
+    this.emitter.once(channel, callback);
+  };
+
+  this.subscribe = function(messageType, messageSubtype, callback) {
+    var channel = messageType;
+    if (messageSubtype)
+       channel += (":" + messageSubtype);
+    this.emitter.addEventListener(channel, callback);
+  };
+  
+  this.unsubscribe = function(messageType, messageSubtype, f) {
+    var channel = messageType;
+    if (messageSubtype)
+       channel += (":" + messageSubtype);
+    this.emitter.removeEventListener(channel, f);
+  };
+
+  this.onMessage = function(msg) {
+    var channel = msg.type;
+    if (msg.subtype)
+      channel += (":" + msg.subtype);
+    console.log("publish to: " + channel);
+    this.emitter.emit(channel, msg.body);
+  };
+};
 
 var LanguageWorker = exports.LanguageWorker = function(sender) {
     var _self = this;
     this.handlers = [];
     this.currentMarkers = [];
     this.$lastAggregateActions = {};
+    this.$warningLevel = "info";
+    sender.once = EventEmitter.once;
+    this.serverProxy = new ServerProxy(sender);
     
     Mirror.call(this, sender);
     this.setTimeout(500);
-    
-    sender.on("complete", function(pos) {
-        _self.complete(pos);
+
+    sender.on("outline", function(event) {
+        _self.outline();
+    });
+    sender.on("hierarchy", function(event) {
+        _self.hierarchy(event);
+    });
+    sender.on("code_format", function(event) {
+        _self.codeFormat();
+    });
+    sender.on("complete", function(event) {
+        _self.complete(event);
     });
     sender.on("documentClose", function(event) {
         _self.documentClose(event);
     });
     sender.on("analyze", function(event) {
-        _self.analyze(event);
+        _self.analyze(function() { });
     });
     sender.on("cursormove", function(event) {
         _self.onCursorMove(event);
     });
-    
     sender.on("inspect", function(event) {
         _self.inspect(event);
     });
-    
     sender.on("change", function() {
         _self.scheduledUpdate = true;
     });
-    
+    sender.on("jumpToDefinition", function(event) {
+        _self.jumpToDefinition(event);
+    });
     sender.on("fetchVariablePositions", function(event) {
         _self.sendVariablePositions(event);
+    });
+    sender.on("startRefactoring", function(event) {
+        _self.startRefactoring(event);
+    });
+    sender.on("finishRefactoring", function(event) {
+        _self.finishRefactoring(event);
+    });
+    sender.on("cancelRefactoring", function(event) {
+        _self.cancelRefactoring(event);
+    });
+    sender.on("serverProxy", function(event) {
+        _self.serverProxy.onMessage(event.data);
     });
 };
 
 oop.inherits(LanguageWorker, Mirror);
+
+function asyncForEach(array, fn, callback) {
+	array = array.slice(0); // Just to be sure
+	function processOne() {
+		var item = array.pop();
+		fn(item, function(result, err) {
+			if (array.length > 0) {
+				processOne();
+			}
+			else {
+				callback(result, err);
+			}
+		});
+	}
+	if (array.length > 0) {
+		processOne();
+	}
+	else {
+		callback();
+	}
+}
+
+function asyncParForEach(array, fn, callback) {
+	var completed = 0;
+	var arLength = array.length;
+	if (arLength === 0) {
+		callback();
+	}
+	for (var i = 0; i < arLength; i++) {
+		fn(array[i], function(result, err) {
+			completed++;
+			if (completed === arLength) {
+				callback(result, err);
+			}
+		});
+	}
+}
 
 (function() {
     
@@ -5005,32 +5120,89 @@ oop.inherits(LanguageWorker, Mirror);
         disabledFeatures[name] = true;
     };
     
+    this.setWarningLevel = function(level) {
+        this.$warningLevel = level;
+    };
+    
     /**
      * Registers a handler by loading its code and adding it the handler array
      */
     this.register = function(path) {
         var handler = require(path);
+        handler.proxy = this.serverProxy;
+        handler.sender = this.sender;
         this.handlers.push(handler);
     };
 
-    this.parse = function() {
-        for (var i = 0; i < this.handlers.length; i++) {
-            var handler = this.handlers[i];
-            if (handler.handlesLanguage(this.$language)) {
+    this.parse = function(callback) {
+        var _self = this;
+        this.cachedAst = null;
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
                 try {
-                    var ast = handler.parse(this.doc.getValue());
-                    if(ast) {
-                        this.cachedAst = ast;
-                        return ast;
-                    }
+                    handler.parse(_self.doc.getValue(), function(ast) {
+                        if(ast)
+                            _self.cachedAst = ast;
+                        next();
+                    });
                 } catch(e) {
                     // Ignore parse errors
+                    next();
                 }
             }
-        }
-        // No parser available
-        this.cachedAst = null;
-        return null;
+            else
+                next();
+        }, function() {
+            callback(_self.cachedAst);
+        });
+    };
+
+    this.outline = function() {
+        var _self = this;
+        this.parse(function(ast) {
+            asyncForEach(_self.handlers, function(handler, next) {
+                if (handler.handlesLanguage(_self.$language)) {
+                    handler.outline(_self.doc, ast, function(outline) {
+                        if(outline)
+                            return _self.sender.emit("outline", outline);
+                    });
+                }
+                else
+                    next();
+            }, function() {
+            });
+        });
+    };
+
+    this.hierarchy = function(event) {
+        var data = event.data;
+        var _self = this;
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.hierarchy(_self.doc, data.pos, function(hierarchy) {
+                    if(hierarchy)
+                        return _self.sender.emit("hierarchy", hierarchy);
+                });
+            }
+            else
+                next();
+        }, function() {
+        });
+    };
+
+    this.codeFormat = function() {
+        var _self = this;
+        asyncForEach(_self.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.codeFormat(_self.doc, function(newSource) {
+                    if(newSource)
+                        return _self.sender.emit("code_format", newSource);
+                });
+            }
+            else
+                next();
+        }, function() {
+        });
     };
 
     this.scheduleEmit = function(messageType, data) {
@@ -5057,30 +5229,33 @@ oop.inherits(LanguageWorker, Mirror);
             }
         }
     }
-    
-    this.analyze = function() {
-        var ast = this.parse();
-        var markers = [];
-        var handlerCount = 0;
-        for(var i = 0; i < this.handlers.length; i++) {
-            var handler = this.handlers[i];
-            if (handler.handlesLanguage(this.$language) && (ast || !handler.analysisRequiresParsing())) {
-                var result = handler.analyze(this.doc, ast);
-                if (result)
-                    markers = markers.concat(result);
-                handlerCount++;
-            }
-        }
-        var extendedMakers = markers;
-        filterMarkersAroundError(ast, markers);
-        if (this.getLastAggregateActions().markers.length > 0)
-            extendedMakers = markers.concat(this.getLastAggregateActions().markers);
-        if(handlerCount > 0)
-            this.scheduleEmit("markers", extendedMakers);
-        this.currentMarkers = markers;
-        if (this.postponedCursorMove) {
-            this.onCursorMove(this.postponedCursorMove);
-        }
+
+    this.analyze = function(callback) {
+        var _self = this;
+        this.parse(function(ast) {
+            var markers = [];
+            asyncForEach(_self.handlers, function(handler, next) {
+                if (handler.handlesLanguage(_self.$language) && (ast || !handler.analysisRequiresParsing())) {
+                    handler.analyze(_self.doc, ast, function(result) {
+                        if (result)
+                            markers = markers.concat(result);
+                        next();
+                    });
+                }
+                else
+                    next();
+            }, function() {
+                var extendedMakers = markers;
+                filterMarkersAroundError(ast, markers);
+                if (_self.getLastAggregateActions().markers.length > 0)
+                    extendedMakers = markers.concat(_self.getLastAggregateActions().markers);
+                _self.scheduleEmit("markers", _self.filterMarkersBasedOnLevel(extendedMakers));
+                _self.currentMarkers = markers;
+                if (_self.postponedCursorMove) {}
+                    // _self.onCursorMove(_self.postponedCursorMove);
+                callback();
+            });
+        });
     };
 
     this.checkForMarker = function(pos) {
@@ -5092,6 +5267,17 @@ oop.inherits(LanguageWorker, Mirror);
             }
         }
     };
+    
+    this.filterMarkersBasedOnLevel = function(markers) {
+        for (var i = 0; i < markers.length; i++) {
+            var marker = markers[i];
+            if(marker.level && WARNING_LEVELS[marker.level] < WARNING_LEVELS[this.$warningLevel]) {
+                markers.splice(i, 1);
+                i--;
+            }
+        }
+        return markers;
+    }
     
     /**
      * Request the AST node on the current position
@@ -5124,19 +5310,17 @@ oop.inherits(LanguageWorker, Mirror);
             return;
         }
         var pos = event.data;
-        var hintMessage = this.checkForMarker(pos) || "";
+        var _self = this;
+        var hintMessage = ""; // this.checkForMarker(pos) || "";
         // Not going to parse for this, only if already parsed successfully
         var aggregateActions = {markers: [], hint: null, enableRefactorings: []};
-        if (this.cachedAst) {
-            var ast = this.cachedAst;
-            var currentNode = ast.findNode({line: pos.row, col: pos.column});
-            if (currentNode !== this.lastCurrentNode || pos.force) {
-                for (var i = 0; i < this.handlers.length; i++) {
-                    var handler = this.handlers[i];
-                    if (handler.handlesLanguage(this.$language)) {
-                        var response = handler.onCursorMovedNode(this.doc, ast, pos, currentNode);
+
+        function cursorMoved() {
+            asyncForEach(_self.handlers, function(handler, next) {
+                if (handler.handlesLanguage(_self.$language)) {
+                    handler.onCursorMovedNode(_self.doc, ast, pos, currentNode, function(response) {
                         if (!response)
-                            continue;
+                            return next();
                         if (response.markers && response.markers.length > 0) {
                             aggregateActions.markers = aggregateActions.markers.concat(response.markers);
                         }
@@ -5147,23 +5331,40 @@ oop.inherits(LanguageWorker, Mirror);
                             // Last one wins, support multiple?
                             aggregateActions.hint = response.hint;
                         }
-                    }
+                        next();
+                    });
                 }
+                else
+                    next();
+            }, function() {
                 if (aggregateActions.hint && !hintMessage) {
                     hintMessage = aggregateActions.hint;
                 }
-                this.scheduleEmit("markers", this.currentMarkers.concat(aggregateActions.markers));
-                this.scheduleEmit("enableRefactorings", aggregateActions.enableRefactorings);
-                this.lastCurrentNode = currentNode;
-                this.setLastAggregateActions(aggregateActions);
+                _self.scheduleEmit("markers", _self.filterMarkersBasedOnLevel(_self.currentMarkers.concat(aggregateActions.markers)));
+                _self.scheduleEmit("enableRefactorings", aggregateActions.enableRefactorings);
+                _self.lastCurrentNode = currentNode;
+                _self.setLastAggregateActions(aggregateActions);
+                _self.scheduleEmit("hint", {
+                    pos: pos,
+                	message: hintMessage
+                });
+            });
+
+        }
+        
+        if (this.cachedAst) {
+            var ast = this.cachedAst;
+            var currentNode = ast.findNode({line: pos.row, col: pos.column});
+            if (currentNode !== this.lastCurrentNode || pos.force) {
+                cursorMoved();
             }
         } else {
-            this.setLastAggregateActions(aggregateActions);
+            cursorMoved();
         }
-        this.scheduleEmit("hint", hintMessage);
     };
-    
-    this.sendVariablePositions = function(event) {
+
+
+    this.jumpToDefinition = function(event) {
         var pos = event.data;
         // Not going to parse for this, only if already parsed successfully
         if (this.cachedAst) {
@@ -5172,26 +5373,103 @@ oop.inherits(LanguageWorker, Mirror);
             for (var i = 0; i < this.handlers.length; i++) {
                 var handler = this.handlers[i];
                 if (handler.handlesLanguage(this.$language)) {
-                    var response = handler.getVariablePositions(this.doc, ast, pos, currentNode);
+                    var response = handler.jumpToDefinition(this.doc, ast, pos, currentNode);
                     if (response)
-                        this.sender.emit("variableLocations", response);
+                        this.sender.emit("jumpToDefinition", response);
                 }
             }
         }
     };
 
+    this.sendVariablePositions = function(event) {
+        var pos = event.data;
+        var _self = this;
+        // Not going to parse for this, only if already parsed successfully
+        var ast = this.cachedAst;
+        var currentNode = ast && ast.findNode({line: pos.row, col: pos.column});
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.getVariablePositions(_self.doc, ast, pos, currentNode, function(response) {
+                    if (response)
+                        _self.sender.emit("variableLocations", response);
+                    next();
+                });
+            }
+            else
+                next();
+        }, function() {
+        });
+    };
+
+    this.startRefactoring = function(event) {
+        var _self = this;
+        this.handlers.forEach(function(handler){
+			if (handler.handlesLanguage(_self.$language))
+				handler.startRefactoring(_self.doc);
+		});
+    };
+
+    this.finishRefactoring = function(event) {
+        var _self = this;
+        var data = event.data;
+
+        var oldId = data.oldId;
+        var newName = data.newName;
+
+        var handled = false;
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.finishRefactoring(_self.doc, oldId, newName, function(response) {
+                    if (response) {
+                        handled = true;
+                        _self.sender.emit("refactorResult", response);
+                    }
+                    next();
+                });
+            }
+            else
+                next();
+        }, function() {
+            if (! handled)
+                _self.sender.emit("refactorResult", {success: true});
+        });
+    };
+
+    this.cancelRefactoring = function(event) {
+        var _self = this;
+        asyncForEach(this.handlers, function(handler, next) {
+            if (handler.handlesLanguage(_self.$language)) {
+                handler.cancelRefactoring(function() {
+                    next();
+                });
+            }
+            else
+                next();
+        }, function() {
+        });
+    }
+
     this.onUpdate = function() {
         this.scheduledUpdate = false;
-        for (var i = 0; i < this.handlers.length; i++) {
-            var handler = this.handlers[i];
-            if (handler.handlesLanguage(this.$language)) {
-                handler.onUpdate(this.doc);
-            }
-        }
-        this.analyze();
+        var _self = this;
+        asyncForEach(this.handlers, function(handler, next) { 
+            if (handler.handlesLanguage(_self.$language))
+                handler.onUpdate(_self.doc, next);
+            else
+                next();
+        }, function() {
+            _self.analyze(function() {});
+        });
     };
     
-    this.switchFile = function(path, language, code) {
+    // TODO: BUG open an XML file and switch between, language doesn't update soon enough
+    this.switchFile = function(path, language, code, project) {
+        var _self = this;
+        if (! this.$analyzeInterval) {
+            this.$analyzeInterval = setInterval(function() {
+                _self.analyze(function(){});
+            }, 2000);
+        }
         var oldPath = this.$path;
         code = code || "";
         this.$path = path;
@@ -5199,20 +5477,24 @@ oop.inherits(LanguageWorker, Mirror);
         this.cachedAst = null;
         this.lastCurrentNode = null;
         this.setValue(code);
-        for (var i = 0; i < this.handlers.length; i++) {
-            var handler = this.handlers[i];
+        var doc = this.doc;
+        asyncForEach(this.handlers, function(handler, next) {
             handler.path = path;
+            handler.project = project;
             handler.language = language;
-            handler.onDocumentOpen(path, this.doc, oldPath);
-        }
+            handler.onDocumentOpen(path, doc, oldPath, next);
+        }, function() { });
     };
     
     this.documentClose = function(event) {
-        var path = event.data;
-        for (var i = 0; i < this.handlers.length; i++) {
-            var handler = this.handlers[i];
-            handler.onDocumentClose(path);
+        if (this.$analyzeInterval) {
+            clearInterval(this.$analyzeInterval);
+            this.$analyzeInterval = null;
         }
+        var path = event.data;
+        asyncForEach(this.handlers, function(handler, next) {
+            handler.onDocumentClose(path, next);
+        }, function() { });
     };
     
     // For code completion
@@ -5250,43 +5532,57 @@ oop.inherits(LanguageWorker, Mirror);
         var pos = event.data;
         // Check if anybody requires parsing for its code completion
         var ast, currentNode;
-        for (var i = 0; i < this.handlers.length; i++) {
-            var handler = this.handlers[i];
-            if (handler.handlesLanguage(this.$language) && handler.completionRequiresParsing()) {
-                ast = this.parse();
-                currentNode = ast.findNode({line: pos.row, col: pos.column});
-                break;
-            }
-        }
+        var _self = this;
         
-        var matches = [];
-        
-        for (var i = 0; i < this.handlers.length; i++) {
-            var handler = this.handlers[i];
-            if (handler.handlesLanguage(this.$language)) {
-                var completions = handler.complete(this.doc, ast, pos, currentNode);
-                if (completions)
-                    matches = matches.concat(completions);
+        asyncForEach(this.handlers, function(handler, next) {
+            if (!ast && handler.handlesLanguage(_self.$language) && handler.completionRequiresParsing()) {
+                _self.parse(function(hAst) {
+                    if(hAst) {
+                        ast = hAst;
+                        currentNode = ast.findNode({line: pos.row, col: pos.column});
+                    }
+                    next();
+                });
             }
-        }
-
-        removeDuplicateMatches(matches);
-        // Sort by priority, score
-        matches.sort(function(a, b) {
-            if (a.priority < b.priority)
-                return 1;
-            else if (a.priority > b.priority)
-                return -1;
-            else if (a.score < b.score)
-                return 1;
-            else if (a.score > b.score)
-                return -1;
             else
-                return 0;
+                next();
+        }, function() {
+            var matches = [];
+            
+            asyncForEach(_self.handlers, function(handler, next) {
+                if (handler.handlesLanguage(_self.$language)) {
+                    handler.complete(_self.doc, ast, pos, currentNode, function(completions) {
+                        if (completions)
+                            matches = matches.concat(completions);
+                        next();
+                    });
+                }
+                else
+                    next();
+            }, function() {
+                removeDuplicateMatches(matches);
+                // Sort by priority, score
+                matches.sort(function(a, b) {
+                    if (a.priority < b.priority)
+                        return 1;
+                    else if (a.priority > b.priority)
+                        return -1;
+                    else if (a.score < b.score)
+                        return 1;
+                    else if (a.score > b.score)
+                        return -1;
+                    else if(a.name < b.name)
+                        return -1;
+                    else if(a.name > b.name)
+                        return 1;
+                    else
+                        return 0;
+                });
+                // Don't slice the results to benefit from caching
+                // matches = matches.slice(0, 50); // 50 ought to be enough for everybody
+                _self.sender.emit("complete", matches);
+            });
         });
-        
-        matches = matches.slice(0, 50); // 50 ought to be enough for everybody
-        this.sender.emit("complete", matches);
     };
 
 }).call(LanguageWorker.prototype);
@@ -7032,7 +7328,7 @@ var SPLIT_REGEX = /[^a-zA-Z_0-9\$]+/;
 var completer = module.exports = Object.create(baseLanguageHandler);
     
 completer.handlesLanguage = function(language) {
-    return true;
+    return language !== "java";
 };
 
 // For the current document, gives scores to identifiers not on frequency, but on distance from the current prefix
@@ -7080,7 +7376,7 @@ completer.completionRequiresParsing = function() {
     return false;
 };
     
-completer.complete = function(doc, fullAst, pos, currentNode) {
+completer.complete = function(doc, fullAst, pos, currentNode, callback) {
     var identDict = analyze(doc, pos);
     var line = doc.getLine(pos.row);
     var identifier = completeUtil.retrievePreceedingIdentifier(line, pos.column);
@@ -7091,7 +7387,7 @@ completer.complete = function(doc, fullAst, pos, currentNode) {
     }
     var matches = completeUtil.findCompletions(identifier, allIdentifiers);
 
-    return matches.map(function(m) {
+    callback(matches.map(function(m) {
         return {
           name        : m,
           replaceText : m,
@@ -7100,7 +7396,7 @@ completer.complete = function(doc, fullAst, pos, currentNode) {
           meta        : "",
           priority    : 1
         };
-    });
+    }));
 };
 
 });
@@ -7139,11 +7435,11 @@ module.exports = {
     /**
      * If the language handler implements parsing, this function should take
      * the source code and turn it into an AST (in treehugger format)
-     * @param code code to parse
+     * @param doc the Document object repersenting the source
      * @return treehugger AST or null if not implemented
      */
-    parse: function(doc) {
-        return null;
+    parse: function(doc, callback) {
+        callback();
     },
     
     /**
@@ -7155,48 +7451,64 @@ module.exports = {
     },
     
     /**
-     * Invoked on a successful parse
-     * @param ast the resulting AST in treehugger format
-     */
-    onParse: function(ast) {
-    },
-    
-    /**
      * Invoked when the document has been updated (possibly after a certain interval)
-     * @param doc the document object
+     * @param doc the Document object repersenting the source
      */
-    onUpdate: function(doc) {
+    onUpdate: function(doc, callback) {
+        callback();
     },
     
     /**
      * Invoked when a new document has been opened
      * @param path the path of the newly opened document
-     * @param doc the document object
+     * @param doc the Document object repersenting the source
      * @param oldPath the path of the document that was active before
      */
-    onDocumentOpen: function(path, doc, oldPath) {
+    onDocumentOpen: function(path, doc, oldPath, callback) {
+        this.refactorInProgress = false;
+        callback();
     },
     
     /**
      * Invoked when a document is closed in the IDE
      * @param path the path of the file
      */
-    onDocumentClose: function(path) {
+    onDocumentClose: function(path, callback) {
+        this.refactorInProgress = false;
+        callback();
     },
     
     /**
      * Invoked when the cursor has been moved inside to a different AST node
+     * @param doc the Document object repersenting the source
+     * @param fullAst the entire AST of the current file (if exists)
+     * @param cursorPos the current cursor position (object with keys 'row' and 'column')
+     * @param currentNode the AST node the cursor is currently at (if exists)
      * @return a JSON object with three optional keys: {markers: [...], hint: {message: ...}, enableRefactoring: [...]}
      */
-    onCursorMovedNode: function(doc, fullAst, cursorPos, currentNode) {
+    onCursorMovedNode: function(doc, fullAst, cursorPos, currentNode, callback) {
+        callback();
     },
     
     /**
      * Invoked when an outline is required
+     * @param doc the Document object repersenting the source
+     * @param fullAst the entire AST of the current file (if exists)
      * @return a JSON outline structure or null if not supported
      */
-    outline: function(ast) {
-        return null;
+    outline: function(doc, fullAst, callback) {
+        callback();
+    },
+
+    /**
+     * Invoked when an type hierarchy is required
+     * (either for a selected element, or the enclosing element)
+     * @param doc the Document object repersenting the source
+     * @param cursorPos the current cursor position (object with keys 'row' and 'column')
+     * @return a JSON hierarchy structure or null if not supported
+     */
+    hierarchy: function(doc, cursorPos, callback) {
+        callback();
     },
     
     /**
@@ -7208,13 +7520,14 @@ module.exports = {
     
     /**
      * Performs code completion for the user based on the current cursor position
-     * @param doc the entire source code as string
-     * @param fullAst the entire AST of the current file
+     * @param doc the Document object repersenting the source
+     * @param fullAst the entire AST of the current file (if exists)
      * @param cursorPos the current cursor position (object with keys 'row' and 'column')
-     * @param currentNode the AST node the cursor is currently at
+     * @param currentNode the AST node the cursor is currently at (if exists)
+     * @return an array of completion matches
      */
-    complete: function(doc, fullAst, cursorPos, currentNode) {
-        return null;
+    complete: function(doc, fullAst, cursorPos, currentNode, callback) {
+        callback();
     },
 
     /**
@@ -7226,21 +7539,67 @@ module.exports = {
     
     /**
      * Enables the handler to do analysis of the AST and annotate as desired
+     * @param doc the Document object repersenting the source
+     * @param fullAst the entire AST of the current file (if exists)
+     * @return an array of error and warning markers
      */
-    analyze: function(doc, fullAst) {
-        return null;
+    analyze: function(doc, fullAst, callback) {
+        callback();
     },
     
     /**
      * Invoked when inline variable renaming is activated
-     * @return an array of positions of the currently selected variable
+     * @param doc the Document object repersenting the source
+     * @param fullAst the entire AST of the current file (if exists)
+     * @param pos the current cursor position (object with keys 'row' and 'column')
+     * @param currentNode the AST node the cursor is currently at (if exists)
+     * @return an object with the main occurence and array of other occurences of the selected element
      */
-    getVariablePositions: function(doc, fullAst, pos, currentNode) {
-        return null;
+    getVariablePositions: function(doc, fullAst, pos, currentNode, callback) {
+        callback();
+    },
+
+    /**
+     * Invoked when refactoring is started -> So, for java, saving the file is no more legal to do
+     * @param doc the Document object repersenting the source
+     * @param oldId the old identifier wanted to be refactored
+     */
+    startRefactoring: function(doc) {
+      this.refactorInProgress = true;
+    },
+
+    /**
+     * Invoked when a refactor request is being finalized and waiting for a status
+     * @param doc the Document object repersenting the source
+     * @param oldId the old identifier wanted to be refactored
+     * @param newName the new name of the element after refactoring
+     * @return boolean indicating whether to progress or an error message if refactoring failed
+     */
+    finishRefactoring: function(doc, oldId, newName, callback) {
+        this.refactorInProgress = false;
+        callback();
+    },
+
+    /**
+     * Invoked when a refactor request is cancelled
+     */
+    cancelRefactoring: function(callback) {
+        this.refactorInProgress = false;
+        callback();
+    },
+
+    /**
+     * Invoked when an automatic code formating is wanted
+     * @param doc the Document object repersenting the source
+     * @return a string value representing the new source code after formatting or null if not supported
+     */
+    codeFormat: function(doc, callback) {
+        callback();
     }
 };
 
-});define('ext/codecomplete/complete_util', ['require', 'exports', 'module' ], function(require, exports, module) {
+});
+define('ext/codecomplete/complete_util', ['require', 'exports', 'module' ], function(require, exports, module) {
 
 var ID_REGEX = /[a-zA-Z_0-9\$]/;
 
@@ -7253,6 +7612,26 @@ function retrievePreceedingIdentifier(text, pos) {
             break;
     }
     return buf.reverse().join("");
+}
+
+function retrieveFullIdentifier(text, pos) {
+    var buf = [];
+    var i = pos >= text.length ? (text.length - 1) : pos;
+    while (i < text.length && ID_REGEX.test(text[i]))
+        i++;
+    // e.g edge semicolon check
+    i = pos == text.length ? i : i-1;
+    for (; i >= 0 && ID_REGEX.test(text[i]); i--) {
+        buf.push(text[i]);
+    }
+    i++;
+    var text = buf.reverse().join("");
+    if (text.length == 0)
+        return null;
+    return {
+        sc: i,
+        text: text
+    };
 }
 
 function prefixBinarySearch(items, prefix) {
@@ -7280,14 +7659,13 @@ function findCompletions(prefix, allIdentifiers) {
     allIdentifiers.sort();
     var startIdx = prefixBinarySearch(allIdentifiers, prefix);
     var matches = [];
-    for (var i = startIdx; i < allIdentifiers.length &&
-                          allIdentifiers[i].indexOf(prefix) === 0; i++) {
+    for (var i = startIdx; i < allIdentifiers.length && allIdentifiers[i].indexOf(prefix) === 0; i++)
         matches.push(allIdentifiers[i]);
-    }
     return matches;
 }
 
 exports.retrievePreceedingIdentifier = retrievePreceedingIdentifier;
+exports.retrieveFullIdentifier = retrieveFullIdentifier;
 exports.findCompletions = findCompletions;
 
 });var globalRequire = require;
@@ -7302,7 +7680,7 @@ var completer = module.exports = Object.create(baseLanguageHandler);
 var snippetCache = {}; // extension -> snippets
     
 completer.handlesLanguage = function(language) {
-    return true;
+    return false;
 };
 
 completer.fetchText = function(path) {
@@ -7315,9 +7693,11 @@ completer.fetchText = function(path) {
         return false;
 };
 
-completer.complete = function(doc, fullAst, pos, currentNode) {
+completer.complete = function(doc, fullAst, pos, currentNode, callback) {
     var line = doc.getLine(pos.row);
     var identifier = completeUtil.retrievePreceedingIdentifier(line, pos.column);
+    if(line[pos.column-1] === '.') // No snippet completion after "."
+        return;
 
     var snippets = snippetCache[this.language];
     
@@ -7331,7 +7711,7 @@ completer.complete = function(doc, fullAst, pos, currentNode) {
     var allIdentifiers = Object.keys(snippets);
     
     var matches = completeUtil.findCompletions(identifier, allIdentifiers);
-    return matches.map(function(m) {
+    callback(matches.map(function(m) {
         return {
           name        : m,
           replaceText : snippets[m],
@@ -7339,7 +7719,7 @@ completer.complete = function(doc, fullAst, pos, currentNode) {
           meta        : "snippet",
           priority    : 2
         };
-    });
+    }));
 };
 
 
@@ -7403,22 +7783,25 @@ function analyzeDocument(path, allCode) {
     }
 }
 
-completer.onDocumentOpen = function(path, doc) {
+completer.onDocumentOpen = function(path, doc, oldPath, callback) {
     if (!analysisCache[path]) {
         analyzeDocument(path, doc.getValue());
     }
+    callback();
 };
     
-completer.onDocumentClose = function(path) {
+completer.onDocumentClose = function(path, callback) {
     removeDocumentFromCache(path);
+    callback();
 };
 
-completer.onUpdate = function(doc) {
+completer.onUpdate = function(doc, callback) {
     removeDocumentFromCache(this.path);
     analyzeDocument(this.path, doc.getValue());
+    callback();
 };
 
-completer.complete = function(doc, fullAst, pos, currentNode) {
+completer.complete = function(doc, fullAst, pos, currentNode, callback) {
     var line = doc.getLine(pos.row);
     var identifier = completeUtil.retrievePreceedingIdentifier(line, pos.column);
     var identDict = globalWordIndex;
@@ -7434,7 +7817,7 @@ completer.complete = function(doc, fullAst, pos, currentNode) {
         return !globalWordFiles[m][currentPath];
     });
 
-    return matches.map(function(m) {
+    callback(matches.map(function(m) {
         var path = Object.keys(globalWordFiles[m])[0] || "[unknown]";
         var pathParts = path.split("/");
         var foundInFile = pathParts[pathParts.length-1];
@@ -7446,7 +7829,7 @@ completer.complete = function(doc, fullAst, pos, currentNode) {
           meta        : foundInFile,
           priority    : 0
         };
-    });
+    }));
 };
 
 });
@@ -7467,9 +7850,9 @@ handler.handlesLanguage = function(language) {
     return language === 'javascript';
 };
     
-handler.parse = function(code) {
+handler.parse = function(code, callback) {
     code = code.replace(/^(#!.*\n)/, "//$1");
-    return parser.parse(code);
+    callback(parser.parse(code));
 };
 
 /* Ready to be enabled to replace Narcissus, when mature
@@ -9208,8 +9591,8 @@ exports.set_logger = function(logger) {
  */
 define('ext/jslanguage/scope_analyzer', ['require', 'exports', 'module' , 'ext/language/base_handler', 'treehugger/traverse'], function(require, exports, module) {
 var baseLanguageHandler = require('ext/language/base_handler');
-require('treehugger/traverse');
 var handler = module.exports = Object.create(baseLanguageHandler);
+require('treehugger/traverse');
 
 // Based on https://github.com/jshint/jshint/blob/master/jshint.js#L331
 var GLOBALS = {
@@ -9220,116 +9603,120 @@ var GLOBALS = {
     "null"                   : true,
     "this"                   : true,
     "arguments"              : true,
+    self                     : true,
+    Infinity                 : true,
+    onmessage                : true,
     // Browser
-    ArrayBuffer              :  true,
-    ArrayBufferView          :  true,
-    Audio                    :  true,
-    addEventListener         :  true,
-    applicationCache         :  true,
-    blur                     :  true,
-    clearInterval            :  true,
-    clearTimeout             :  true,
-    close                    :  true,
-    closed                   :  true,
-    DataView                 :  true,
-    defaultStatus            :  true,
-    document                 :  true,
-    event                    :  true,
-    FileReader               :  true,
-    Float32Array             :  true,
-    Float64Array             :  true,
-    FormData                 :  true,
-    getComputedStyle         :  true,
-    HTMLElement              :  true,
-    HTMLAnchorElement        :  true,
-    HTMLBaseElement          :  true,
-    HTMLBlockquoteElement    :  true,
-    HTMLBodyElement          :  true,
-    HTMLBRElement            :  true,
-    HTMLButtonElement        :  true,
-    HTMLCanvasElement        :  true,
-    HTMLDirectoryElement     :  true,
-    HTMLDivElement           :  true,
-    HTMLDListElement         :  true,
-    HTMLFieldSetElement      :  true,
-    HTMLFontElement          :  true,
-    HTMLFormElement          :  true,
-    HTMLFrameElement         :  true,
-    HTMLFrameSetElement      :  true,
-    HTMLHeadElement          :  true,
-    HTMLHeadingElement       :  true,
-    HTMLHRElement            :  true,
-    HTMLHtmlElement          :  true,
-    HTMLIFrameElement        :  true,
-    HTMLImageElement         :  true,
-    HTMLInputElement         :  true,
-    HTMLIsIndexElement       :  true,
-    HTMLLabelElement         :  true,
-    HTMLLayerElement         :  true,
-    HTMLLegendElement        :  true,
-    HTMLLIElement            :  true,
-    HTMLLinkElement          :  true,
-    HTMLMapElement           :  true,
-    HTMLMenuElement          :  true,
-    HTMLMetaElement          :  true,
-    HTMLModElement           :  true,
-    HTMLObjectElement        :  true,
-    HTMLOListElement         :  true,
-    HTMLOptGroupElement      :  true,
-    HTMLOptionElement        :  true,
-    HTMLParagraphElement     :  true,
-    HTMLParamElement         :  true,
-    HTMLPreElement           :  true,
-    HTMLQuoteElement         :  true,
-    HTMLScriptElement        :  true,
-    HTMLSelectElement        :  true,
-    HTMLStyleElement         :  true,
-    HTMLTableCaptionElement  :  true,
-    HTMLTableCellElement     :  true,
-    HTMLTableColElement      :  true,
-    HTMLTableElement         :  true,
-    HTMLTableRowElement      :  true,
-    HTMLTableSectionElement  :  true,
-    HTMLTextAreaElement      :  true,
-    HTMLTitleElement         :  true,
-    HTMLUListElement         :  true,
-    HTMLVideoElement         :  true,
-    Int16Array               :  true,
-    Int32Array               :  true,
-    Int8Array                :  true,
-    Image                    :  true,
-    localStorage             :  true,
-    location                 :  true,
-    navigator                :  true,
-    open                     :  true,
-    openDatabase             :  true,
-    Option                   :  true,
-    parent                   :  true,
-    print                    :  true,
-    removeEventListener      :  true,
-    resizeBy                 :  true,
-    resizeTo                 :  true,
-    screen                   :  true,
-    scroll                   :  true,
-    scrollBy                 :  true,
-    scrollTo                 :  true,
-    sessionStorage           :  true,
-    setInterval              :  true,
-    setTimeout               :  true,
-    SharedWorker             :  true,
-    Uint16Array              :  true,
-    Uint32Array              :  true,
-    Uint8Array               :  true,
-    WebSocket                :  true,
-    window                   :  true,
-    Worker                   :  true,
-    XMLHttpRequest           :  true,
-    XPathEvaluator           :  true,
-    XPathException           :  true,
-    XPathExpression          :  true,
-    XPathNamespace           :  true,
-    XPathNSResolver          :  true,
-    XPathResult              :  true,
+    ArrayBuffer              : true,
+    ArrayBufferView          : true,
+    Audio                    : true,
+    addEventListener         : true,
+    applicationCache         : true,
+    blur                     : true,
+    clearInterval            : true,
+    clearTimeout             : true,
+    close                    : true,
+    closed                   : true,
+    DataView                 : true,
+    defaultStatus            : true,
+    document                 : true,
+    event                    : true,
+    FileReader               : true,
+    Float32Array             : true,
+    Float64Array             : true,
+    FormData                 : true,
+    getComputedStyle         : true,
+    CDATASection             : true,
+    HTMLElement              : true,
+    HTMLAnchorElement        : true,
+    HTMLBaseElement          : true,
+    HTMLBlockquoteElement    : true,
+    HTMLBodyElement          : true,
+    HTMLBRElement            : true,
+    HTMLButtonElement        : true,
+    HTMLCanvasElement        : true,
+    HTMLDirectoryElement     : true,
+    HTMLDivElement           : true,
+    HTMLDListElement         : true,
+    HTMLFieldSetElement      : true,
+    HTMLFontElement          : true,
+    HTMLFormElement          : true,
+    HTMLFrameElement         : true,
+    HTMLFrameSetElement      : true,
+    HTMLHeadElement          : true,
+    HTMLHeadingElement       : true,
+    HTMLHRElement            : true,
+    HTMLHtmlElement          : true,
+    HTMLIFrameElement        : true,
+    HTMLImageElement         : true,
+    HTMLInputElement         : true,
+    HTMLIsIndexElement       : true,
+    HTMLLabelElement         : true,
+    HTMLLayerElement         : true,
+    HTMLLegendElement        : true,
+    HTMLLIElement            : true,
+    HTMLLinkElement          : true,
+    HTMLMapElement           : true,
+    HTMLMenuElement          : true,
+    HTMLMetaElement          : true,
+    HTMLModElement           : true,
+    HTMLObjectElement        : true,
+    HTMLOListElement         : true,
+    HTMLOptGroupElement      : true,
+    HTMLOptionElement        : true,
+    HTMLParagraphElement     : true,
+    HTMLParamElement         : true,
+    HTMLPreElement           : true,
+    HTMLQuoteElement         : true,
+    HTMLScriptElement        : true,
+    HTMLSelectElement        : true,
+    HTMLStyleElement         : true,
+    HTMLTableCaptionElement  : true,
+    HTMLTableCellElement     : true,
+    HTMLTableColElement      : true,
+    HTMLTableElement         : true,
+    HTMLTableRowElement      : true,
+    HTMLTableSectionElement  : true,
+    HTMLTextAreaElement      : true,
+    HTMLTitleElement         : true,
+    HTMLUListElement         : true,
+    HTMLVideoElement         : true,
+    Int16Array               : true,
+    Int32Array               : true,
+    Int8Array                : true,
+    Image                    : true,
+    localStorage             : true,
+    location                 : true,
+    navigator                : true,
+    open                     : true,
+    openDatabase             : true,
+    Option                   : true,
+    parent                   : true,
+    print                    : true,
+    removeEventListener      : true,
+    resizeBy                 : true,
+    resizeTo                 : true,
+    screen                   : true,
+    scroll                   : true,
+    scrollBy                 : true,
+    scrollTo                 : true,
+    sessionStorage           : true,
+    setInterval              : true,
+    setTimeout               : true,
+    SharedWorker             : true,
+    Uint16Array              : true,
+    Uint32Array              : true,
+    Uint8Array               : true,
+    WebSocket                : true,
+    window                   : true,
+    Worker                   : true,
+    XMLHttpRequest           : true,
+    XPathEvaluator           : true,
+    XPathException           : true,
+    XPathExpression          : true,
+    XPathNamespace           : true,
+    XPathNSResolver          : true,
+    XPathResult              : true,
     // Devel
     alert                    : true,
     confirm                  : true,
@@ -9471,11 +9858,14 @@ handler.handlesLanguage = function(language) {
     return language === 'javascript';
 };
 
-function Variable(declaration) {
+var scopeId = 0;
+
+var Variable = module.exports.Variable = function Variable(declaration) {
     this.declarations = [];
     if(declaration)
         this.declarations.push(declaration);
     this.uses = [];
+    this.values = [];
 }
 
 Variable.prototype.addUse = function(node) {
@@ -9486,7 +9876,60 @@ Variable.prototype.addDeclaration = function(node) {
     this.declarations.push(node);
 };
 
-handler.analyze = function(doc, ast) {
+/**
+ * Implements Javascript's scoping mechanism using a hashmap with parent
+ * pointers.
+ */
+var Scope = module.exports.Scope = function Scope(parent) {
+    this.id = scopeId++;
+    this.parent = parent;
+    this.vars = {};
+};
+
+/**
+ * Declare a variable in the current scope
+ */
+Scope.prototype.declare = function(name, resolveNode) {
+    if(!this.vars['_'+name]) 
+        this.vars['_'+name] = new Variable(resolveNode);
+    else if(resolveNode)
+        this.vars['_'+name].addDeclaration(resolveNode);
+    return this.vars['_'+name];
+};
+
+Scope.prototype.isDeclared = function(name) {
+    return !!this.get(name);
+};
+
+/**
+ * Get possible values of a variable
+ * @param name name of variable
+ * @return Variable instance 
+ */
+Scope.prototype.get = function(name) {
+    if(this.vars['_'+name])
+        return this.vars['_'+name];
+    else if(this.parent)
+        return this.parent.get(name);
+};
+
+Scope.prototype.getVariableNames = function() {
+    var names = [];
+    for(var p in this.vars) {
+        if(this.vars.hasOwnProperty(p)) {
+            names.push(p.slice(1));
+        }
+    }
+    if(this.parent) {
+        var namesFromParent = this.parent.getVariableNames();
+        for (var i = 0; i < namesFromParent.length; i++) {
+            names.push(namesFromParent[i]);
+        }
+    }
+    return names;
+};
+
+handler.analyze = function(doc, ast, callback) {
     var handler = this;
     var markers = [];
     
@@ -9496,26 +9939,19 @@ handler.analyze = function(doc, ast) {
             // var bla;
             'VarDecl(x)', function(b, node) {
                 node.setAnnotation("scope", scope);
-                if(!scope.hasOwnProperty(b.x.value))
-                    scope[b.x.value] = new Variable(b.x);
-                else
-                    scope[b.x.value].addDeclaration(b.x);
+                scope.declare(b.x.value, b.x);
                 return node;
             },
             // var bla = 10;
-            'VarDeclInit(x, _)', function(b, node) {
+            'VarDeclInit(x, e)', function(b, node) {
                 node.setAnnotation("scope", scope);
-                if(!scope.hasOwnProperty(b.x.value))
-                    scope[b.x.value] = new Variable(b.x);
-                else
-                    scope[b.x.value].addDeclaration(b.x);
-                return node;
+                scope.declare(b.x.value, b.x);
             },
             // function bla(farg) { }
             'Function(x, _, _)', function(b, node) {
                 node.setAnnotation("scope", scope);
                 if(b.x.value) {
-                    scope[b.x.value] = new Variable(b.x);
+                    scope.declare(b.x.value, b.x);
                 }
                 return node;
             }
@@ -9525,20 +9961,22 @@ handler.analyze = function(doc, ast) {
     function scopeAnalyzer(scope, node, parentLocalVars) {
         preDeclareHoisted(scope, node);
         var localVariables = parentLocalVars || [];
+        node.setAnnotation("scope", scope);
         function analyze(scope, node) {
             node.traverseTopDown(
                 'VarDecl(x)', function(b) {
-                    localVariables.push(scope[b.x.value]);
+                    localVariables.push(scope.get(b.x.value));
                 },
                 'VarDeclInit(x, _)', function(b) {
-                    localVariables.push(scope[b.x.value]);
+                    localVariables.push(scope.get(b.x.value));
                 },
                 'Assign(Var(x), e)', function(b, node) {
-                    if(!scope[b.x.value]) {
+                    if(!scope.isDeclared(b.x.value)) {
                         markers.push({
                             pos: node[0].getPos(),
+                            level: 'warning',
                             type: 'warning',
-                            message: 'Assigning to undeclared variable.'
+                            message: "Assigning to undeclared variable."
                         });
                     }
                     else {
@@ -9547,16 +9985,14 @@ handler.analyze = function(doc, ast) {
                     analyze(scope, b.e);
                     return this;
                 },
-                'ForIn(Var(x), e, stats)', function(b, node) {
-                    if(!scope[b.x.value]) {
+                'ForIn(Var(x), e, stats)', function(b) {
+                    if(!scope.isDeclared(b.x.value)) {
                         markers.push({
-                            pos: node[0].getPos(),
+                            pos: this.getPos(),
+                            level: 'warning',
                             type: 'warning',
-                            message: 'Using undeclared variable as iterator variable.'
+                            message: "Using undeclared variable as iterator variable."
                         });
-                    }
-                    else {
-                        scope[b.x.value].addUse(node);
                     }
                     analyze(scope, b.e);
                     analyze(scope, b.stats);
@@ -9564,11 +10000,12 @@ handler.analyze = function(doc, ast) {
                 },
                 'Var(x)', function(b, node) {
                     node.setAnnotation("scope", scope);
-                    if(scope[b.x.value]) {
-                        scope[b.x.value].addUse(node);
+                    if(scope.isDeclared(b.x.value)) {
+                        scope.get(b.x.value).addUse(node);
                     } else if(handler.isFeatureEnabled("undeclaredVars") && !GLOBALS[b.x.value]) {
                         markers.push({
                             pos: this.getPos(),
+                            level: 'warning',
                             type: 'warning',
                             message: "Undeclared variable."
                         });
@@ -9576,41 +10013,45 @@ handler.analyze = function(doc, ast) {
                     return node;
                 },
                 'Function(x, fargs, body)', function(b, node) {
-                    node.setAnnotation("scope", scope);
-
-                    var newScope = Object.create(scope);
-                    newScope['this'] = new Variable();
+                    var newScope = new Scope(scope);
+                    node.setAnnotation("localScope", newScope);
+                    newScope.declare("this");
                     b.fargs.forEach(function(farg) {
                         farg.setAnnotation("scope", newScope);
-                        newScope[farg[0].value] = new Variable(farg);
+                        var v = newScope.declare(farg[0].value, farg);
                         if (handler.isFeatureEnabled("unusedFunctionArgs"))
-                            localVariables.push(newScope[farg[0].value]);
+                            localVariables.push(v);
                     });
                     scopeAnalyzer(newScope, b.body);
                     return node;
                 },
                 'Catch(x, body)', function(b, node) {
-                    var oldVar = scope[b.x.value];
+                    var oldVar = scope.get(b.x.value);
                     // Temporarily override
-                    scope[b.x.value] = new Variable(b.x);
+                    scope.vars[b.x.value] = new Variable(b.x);
                     scopeAnalyzer(scope, b.body, localVariables);
                     // Put back
-                    scope[b.x.value] = oldVar;
+                    scope.vars[b.x.value] = oldVar;
                     return node;
                 },
                 'PropAccess(_, "lenght")', function(b, node) {
                     markers.push({
                         pos: node.getPos(),
                         type: 'warning',
+                        level: 'warning',
                         message: "Did you mean 'length'?"
                     });
                 },
                 'Call(Var("parseInt"), [_])', function() {
                     markers.push({
                         pos: this[0].getPos(),
-                        type: 'warning',
+                        type: 'info',
+                        level: 'info',
                         message: "Missing radix argument."
                     });
+                },
+                'Block(_)', function() {
+                    this.setAnnotation("scope", scope);
                 }
             );
         }
@@ -9623,6 +10064,7 @@ handler.analyze = function(doc, ast) {
                         markers.push({
                             pos: decl.getPos(),
                             type: 'unused',
+                            level: 'info',
                             message: 'Unused variable.'
                         });
                     });
@@ -9630,13 +10072,14 @@ handler.analyze = function(doc, ast) {
             }
         }
     }
-    scopeAnalyzer({}, ast);
-    return markers;
+    var rootScope = new Scope();
+    scopeAnalyzer(rootScope, ast);
+    callback(markers);
 };
 
-handler.onCursorMovedNode = function(doc, fullAst, cursorPos, currentNode) {
+handler.onCursorMovedNode = function(doc, fullAst, cursorPos, currentNode, callback) {
     if (!currentNode)
-        return;
+        return callback();
     var markers = [];
     var enableRefactorings = [];
     
@@ -9657,71 +10100,72 @@ handler.onCursorMovedNode = function(doc, fullAst, cursorPos, currentNode) {
             });
         });
     }
+    console.log(""+currentNode);
     currentNode.rewrite(
         'Var(x)', function(b) {
             var scope = this.getAnnotation("scope");
             if (!scope)
                 return;
-            var v = scope[b.x.value];
+            var v = scope.get(b.x.value);
             highlightVariable(v);
             // Let's not enable renaming 'this' and only rename declared variables
             if(b.x.value !== "this" && v)
                 enableRefactorings.push("renameVariable");
         },
         'VarDeclInit(x, _)', function(b) {
-            highlightVariable(this.getAnnotation("scope")[b.x.value]);
+            highlightVariable(this.getAnnotation("scope").get(b.x.value));
             enableRefactorings.push("renameVariable");
         },
         'VarDecl(x)', function(b) {
-            highlightVariable(this.getAnnotation("scope")[b.x.value]);
+            highlightVariable(this.getAnnotation("scope").get(b.x.value));
             enableRefactorings.push("renameVariable");
         },
         'FArg(x)', function(b) {
-            highlightVariable(this.getAnnotation("scope")[b.x.value]);
+            highlightVariable(this.getAnnotation("scope").get(b.x.value));
             enableRefactorings.push("renameVariable");
         },
         'Function(x, _, _)', function(b) {
             // Only for named functions
             if(!b.x.value)
                 return;
-            highlightVariable(this.getAnnotation("scope")[b.x.value]);
+            highlightVariable(this.getAnnotation("scope").get(b.x.value));
             enableRefactorings.push("renameVariable");
         }
     );
     
     if (!this.isFeatureEnabled("instanceHighlight"))
-        return { enableRefactorings: enableRefactorings };    
+        return callback({ enableRefactorings: enableRefactorings });
 
-    return {
+    callback({
         markers: markers,
         enableRefactorings: enableRefactorings
-    };
+    });
 };
 
-handler.getVariablePositions = function(doc, fullAst, cursorPos, currentNode) {
+handler.getVariablePositions = function(doc, fullAst, cursorPos, currentNode, callback) {
     var v;
     var mainNode;    
     currentNode.rewrite(
         'VarDeclInit(x, _)', function(b, node) {
-            v = node.getAnnotation("scope")[b.x.value];
-            mainNode = b.x;    
+            v = node.getAnnotation("scope").get(b.x.value);
+            mainNode = b.x;
         },
         'VarDecl(x)', function(b, node) {
-            v = node.getAnnotation("scope")[b.x.value];
+            v = node.getAnnotation("scope").get(b.x.value);
             mainNode = b.x;
         },
         'FArg(x)', function(b, node) {
-            v = node.getAnnotation("scope")[b.x.value];
+            v = node.getAnnotation("scope").get(b.x.value);
             mainNode = node;
         },
         'Function(x, _, _)', function(b, node) {
             if(!b.x.value)
                 return;
-            v = node.getAnnotation("scope")[b.x.value];
+            v = node.getAnnotation("scope").get(b.x.value);
             mainNode = b.x;
         },
         'Var(x)', function(b, node) {
-            v = node.getAnnotation("scope")[b.x.value];
+            v = node.getAnnotation("scope").get(b.x.value);
             mainNode = node;
         }
     );
@@ -9743,14 +10187,14 @@ handler.getVariablePositions = function(doc, fullAst, cursorPos, currentNode) {
             others.push({column: pos.sc, row: pos.sl});
         }
     });
-    return {
+    callback({
         length: length,
         pos: {
             row: pos.sl,
             column: pos.sc
         },
         others: others
-    };
+    });
 };
 
 });
@@ -9974,7 +10418,7 @@ handler.analysisRequiresParsing = function() {
     return false;
 };
 
-handler.analyze = function(doc) {
+handler.analyze = function(doc, ast, callback) {
     var value = doc.getValue();
     value = value.replace(/^(#!.*\n)/, "//$1");
 
@@ -9984,20 +10428,20 @@ handler.analyze = function(doc) {
     }
     catch (e) {
         var chunks = e.message.split(":");
-        var message = chunks.pop().trim();
-        var numString = chunks.pop();
-        if(numString) {
-            var lineNumber = parseInt(numString.trim(), 10) - 1;
+        if(chunks.length > 1) {
+            var message = chunks.pop().trim();
+            var lineNumber = parseInt(chunks.pop().trim(), 10) - 1;
             markers = [{
                 pos: {
                     sl: lineNumber,
                     el: lineNumber
                 },
                 message: message,
-                type: "error"
+                type: "error",
+                level: "error"
             }];
+            return callback(markers);
         }
-        return markers;
     }
     finally {}
     if (this.isFeatureEnabled("jshint")) {
@@ -10020,12 +10464,13 @@ handler.analyze = function(doc) {
                     sl: warning.line-1,
                     sc: warning.column-1
                 },
-                type: 'warning',
+                type: "warning",
+                level: "warning",
                 message: warning.reason
             });
         });
     }
-    return markers;
+    callback(markers);
 };
     
 });
@@ -14585,5 +15030,459 @@ define('ext/jslanguage/debugger', ['require', 'exports', 'module' , 'ext/languag
         );
         return result;
     };
+
+});
+/**
+ * Cloud9 Language Foundation
+ *
+ * @copyright 2011, Ajax.org B.V.
+ * @license GPLv3 <http://www.gnu.org/licenses/gpl.txt>
+ */
+define('ext/javalanguage/processor', ['require', 'exports', 'module' , 'ext/language/base_handler', 'ext/codecomplete/complete_util'], function(require, exports, module) {
+
+var baseLanguageHandler = require("ext/language/base_handler");
+var completeUtil = require("ext/codecomplete/complete_util");
+
+var handler = module.exports = Object.create(baseLanguageHandler);
+
+var getFilePath = function(filePath) {
+    if (filePath.indexOf("/workspace/") === 0)
+        filePath = filePath.substr(11);
+    return filePath;
+};
+
+var calculateOffset = function(doc, cursorPos) {
+    var offset = 0, newLineLength = doc.getNewLineCharacter().length;
+    var prevLines = doc.getLines(0, cursorPos.row - 1);
+
+    for (var i=0; i < prevLines.length; i++) {
+      offset += prevLines[i].length;
+      offset += newLineLength;
+    }
+    offset += cursorPos.column;
+
+    return offset;
+};
+
+var calculatePosition = function(doc, offset) {
+    var row = 0, column, newLineLength = doc.getNewLineCharacter().length;;
+    while (offset > 0) {
+      offset -= doc.getLine(row++).length;
+      offset -= newLineLength; // consider the new line character(s)
+    }
+    if (offset < 0) {
+      row--;
+      offset += newLineLength; // add the new line again
+      column = doc.getLine(row).length + offset;
+    } else {
+      column = 0;
+    }
+    return {
+      row: row,
+      column: column
+    };
+};
+
+var convertToOutlineTree = function(doc, root) {
+  var items = root.items, newItems = [];
+  var start = calculatePosition(doc, root.offset);
+  var end = calculatePosition(doc, root.offset + root.length);
+  var newRoot = {
+    icon: root.type,
+    name: root.name,
+    items: newItems,
+    meta: root.meta,
+    pos: {
+      sl: start.row,
+      sc: start.column,
+      el: end.row,
+      ec: end.column
+    },
+    modifiers: root.modifiers
+  };
+  for (var i = 0; i < items.length; i++) {
+    newItems.push(convertToOutlineTree(doc, items[i]));
+  }
+  return newRoot;
+};
+
+var convertToHierarchyTree = function(doc, root) {
+  var items = root.items, newItems = [];
+  var newRoot = {
+    icon: root.type,
+    name: root.name,
+    items: newItems,
+    meta: root.meta,
+    src: root.src
+  };
+  for (var i = 0; i < items.length; i++) {
+    newItems.push(convertToHierarchyTree(doc, items[i]));
+  }
+  return newRoot;
+};
+
+(function() {
+
+    this.$saveFileAndDo = function(callback) {
+      var todos = this.todos = this.todos || [];
+      callback && todos.push(callback);
+
+      if (this.refactorInProgress)
+        return console.log("waiting refactor to finish");
+      var sender = this.sender;
+      var doCallbacks = function(status) {
+        while (todos.length > 0)
+          todos.pop()(status);
+      };
+      var checkSavingDone = function(event) {
+        var data = event.data;
+          if (data.command != "save")
+            return;
+          sender.removeEventListener("commandComplete", checkSavingDone);
+          if (! data.success) {
+            console.log("Couldn't save the file !!");
+            return doCallbacks(false);
+          }
+          console.log("Saving Complete");
+          doCallbacks(true);
+      };
+      sender.addEventListener("commandComplete", checkSavingDone);
+      sender.emit("commandRequest", { command: "save" });
+    };
+
+    this.handlesLanguage = function(language) {
+        return language === "java";
+    };
+
+    this.complete = function(doc, fullAst, cursorPos, currentNode, callback) {
+        var _self = this;
+        var doComplete = function(savingDone) {
+          if (! savingDone)
+            return callback([]);
+          // The file has been saved, proceed to code complete request
+          var offset = calculateOffset(doc, cursorPos);
+          var command = {
+            command : "jvmfeatures",
+            subcommand : "complete",
+            project: _self.project,
+            file : getFilePath(_self.path),
+            offset: offset
+          };
+          console.log("offset = " + offset);
+          _self.proxy.once("result", "jvmfeatures:complete", function(message) {
+            callback(message.body || []);
+          });
+          _self.proxy.send(command);
+        };
+
+        this.$saveFileAndDo(doComplete);
+    };
+
+    this.onCursorMovedNode = function(doc, fullAst /*null*/, cursorPos, currentNode /*null*/, callback) {
+
+        console.log("onCursorMovedNode called");
+
+        if (this.getVariablesInProgress)
+          return callback();
+        this.getVariablesInProgress = true;
+
+        var _self = this;
+        var markers = [];
+        var enableRefactorings = [];
+
+        var originalCallback = callback;
+        callback = function() {
+          console.log("onCursorMove callback called");
+          originalCallback.apply(null, arguments);
+          _self.getVariablesInProgress = false;
+        };
+
+        var line = doc.getLine(cursorPos.row);
+        var identifier = completeUtil.retrieveFullIdentifier(line, cursorPos.column);
+        if (! identifier)
+          return callback();
+
+        var offset = calculateOffset(doc, { row: cursorPos.row, column: identifier.sc } );
+        var length = identifier.text.length;
+        console.log("cursor: " + cursorPos.row + ":" + cursorPos.column + " & offset: " + offset + " & length: " + identifier.text.length);
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "get_locations",
+          project: _self.project,
+          file : getFilePath(_self.path),
+          offset: offset,
+          length: length
+        };
+
+        var doGetVariablePositions = function(savingDone) {
+          if (! savingDone)
+            return callback();
+
+          _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
+            _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
+            if (! message.success)
+              return callback();
+            console.log("variable positions retrieved");
+            console.log(message.body);
+            var v = message.body;
+            highlightVariable(v);
+            enableRefactorings.push("renameVariable");
+            doneHighlighting();
+          });
+          console.log("command: " + JSON.stringify(command));
+          _self.proxy.send(command);
+        };
+
+        function highlightVariable(v) {
+            if (!v)
+                return callback();
+            v.declarations.forEach(function(match) {
+                var pos = calculatePosition(doc, match.offset);
+                markers.push({
+                    pos: {
+                      sl: pos.row, el: pos.row,
+                      sc: pos.column, ec: pos.column + length
+                    },
+                    type: 'occurrence_main'
+                });
+            });
+            v.uses.forEach(function(match) {
+                var pos = calculatePosition(doc, match.offset);
+                markers.push({
+                    pos: {
+                      sl: pos.row, el: pos.row,
+                      sc: pos.column, ec: pos.column + length
+                    },
+                    type: 'occurrence_other'
+                });
+            });
+        }
+
+        function doneHighlighting() {
+          /*if (! _self.isFeatureEnabled("instanceHighlight"))
+            return callback({ enableRefactorings: enableRefactorings });*/
+
+          callback({
+              markers: markers,
+              enableRefactorings: enableRefactorings
+          });
+        }
+
+        this.$saveFileAndDo(doGetVariablePositions);
+    };
+
+    this.getVariablePositions = function(doc, fullAst /*null*/, pos, currentNode /*null*/, callback) {
+
+        var _self = this;
+
+        var line = doc.getLine(pos.row);
+        var identifier = completeUtil.retrieveFullIdentifier(line, pos.column);
+        var offset = calculateOffset(doc, { row: pos.row, column: identifier.sc } );
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "get_locations",
+          project: _self.project,
+          file : getFilePath(_self.path),
+          offset: offset,
+          length: identifier.text.length
+        };
+
+        var doGetVariablePositions = function(savingDone) {
+          if (! savingDone)
+            return callback();
+
+          _self.proxy.once("result", "jvmfeatures:get_locations", function(message) {
+
+            _self.proxy.emitter.removeAllListeners("result:jvmfeatures:get_locations");
+            if (! message.success)
+              return callback();
+            console.log("variable positions retrieved");
+            console.log(message.body);
+            var v = message.body;
+            var elementPos = {column: identifier.sc, row: pos.row};
+            var others = [];
+
+            var appendToOthers = function(match) {
+               if(offset !== match.offset) {
+                  var pos = calculatePosition(doc, match.offset);
+                  others.push(pos);
+                }
+            };
+
+            v.declarations.forEach(appendToOthers);
+            v.uses.forEach(appendToOthers);
+
+            callback({
+                length: identifier.text.length,
+                pos: elementPos,
+                others: others
+            });
+          });
+          _self.proxy.send(command);
+        };
+
+        this.$saveFileAndDo(doGetVariablePositions);
+    };
+
+    this.finishRefactoring = function(doc, oldId, newName, callback) {
+        var _self = this;
+
+        var offset = calculateOffset(doc, oldId);
+
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "refactor",
+          project: _self.project,
+          file : getFilePath(_self.path),
+          offset: offset,
+          newname: newName,
+          length: oldId.text.length
+        };
+
+        console.log("finishRefactoring called");
+
+        this.proxy.once("result", "jvmfeatures:refactor", function(message) {
+          _self.refactorInProgress = false;
+          _self.$saveFileAndDo(); // notify of ending the refactor
+          // Error handling in the callback
+          console.log({success: message.success, body: message.body});
+          callback({success: message.success, body: message.body});
+        });
+        this.proxy.send(command);
+    };
+
+    this.cancelRefactoring = function(callback) {
+        this.refactorInProgress = false;
+        this.$saveFileAndDo(); // notify of ending the refactor
+        callback();
+    };
+
+    this.outline = function(doc, fullAst /*null*/, callback) {
+        var _self = this;
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "outline",
+          project: _self.project,
+          file : getFilePath(_self.path)
+        };
+
+        var doGetOutline = function() {
+          _self.proxy.once("result", "jvmfeatures:outline", function(message) {
+            var outline = null;
+            if (! message.success)
+              console.log("FAILED: outline call");
+            else
+              outline = convertToOutlineTree(doc, message.body);
+            // Error handling in the callback
+            callback({success: message.success, body: outline});
+          });
+          _self.proxy.send(command);
+        };
+
+        this.$saveFileAndDo(doGetOutline);
+    };
+
+    this.hierarchy = function(doc, cursorPos, callback) {
+        console.log("hierarchy called");
+
+        var _self = this;
+        var offset = calculateOffset(doc, cursorPos);
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "hierarchy",
+          project: _self.project,
+          file : getFilePath(_self.path),
+          offset: offset
+        };
+
+        var line = doc.getLine(cursorPos.row);
+        var identifier = completeUtil.retrieveFullIdentifier(line, cursorPos.column);
+        if (identifier)
+          command.type = identifier.text;
+
+        var doGetHierarchy = function() {
+          _self.proxy.once("result", "jvmfeatures:hierarchy", function(message) {
+            // Super and subtype hierarchies roots
+            var result = message.body;
+            var hierarchy;
+            if (! message.success) {
+              console.log("FAILED: hierarchy call");
+            } else {
+              hierarchy = [convertToHierarchyTree(doc, result[0]),
+                convertToHierarchyTree(doc, result[1])];
+            }
+            // Error handling in the callback
+            callback({success: message.success, body: hierarchy});
+          });
+          _self.proxy.send(command);
+        };
+
+        this.$saveFileAndDo(doGetHierarchy);
+    };
+
+    this.analysisRequiresParsing = function() {
+        return false;
+    };
+
+     this.analyze = function(doc, fullAst /* null */, callback) {
+        var _self = this;
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "analyze_file",
+          project: _self.project,
+          file : getFilePath(_self.path)
+        };
+
+        console.log("analyze_file called");
+
+        var doAnalyzeFile = function() {
+          _self.proxy.once("result", "jvmfeatures:analyze_file", function(message) {
+            if (message.success) {
+              callback(message.body.map(function(marker) {
+                var start = calculatePosition(doc, marker.offset);
+                var end = calculatePosition(doc, marker.offset + marker.length);
+                return {
+                  pos: {
+                    sl: start.row,
+                    sc: start.column,
+                    el: end.row,
+                    ec: end.column
+                  },
+                  level: marker.level,
+                  type: marker.type,
+                  message: marker.message
+                };
+              }));
+            } else {
+              console.log("FAILED: analyze call");
+              callback();
+            }
+          });
+          _self.proxy.send(command);
+        };
+
+        this.$saveFileAndDo(doAnalyzeFile);
+    };
+
+    this.codeFormat = function(doc, callback) {
+        var _self = this;
+        var command = {
+          command : "jvmfeatures",
+          subcommand : "code_format",
+          project: _self.project,
+          file : getFilePath(_self.path)
+        };
+
+        var doGetNewSource = function() {
+          _self.proxy.once("result", "jvmfeatures:code_format", function(message) {
+            callback(message.success ? message.body : null);
+          });
+          _self.proxy.send(command);
+        };
+
+        this.$saveFileAndDo(doGetNewSource);
+    };
+
+}).call(handler);
 
 });

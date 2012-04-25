@@ -35,7 +35,8 @@ sys.inherits(NodeRuntimePlugin, Plugin);
 
     this.command = function(user, message, client) {
         var cmd = (message.command || "").toLowerCase();
-        if (!(/node/.test(message.runner)) && !(cmd.indexOf("debug") > -1 && cmd.indexOf("node") > -1))
+        if (!(/node/.test(message.runner))
+            && (cmd.indexOf("debug") != -1 && !this.nodeDebugProxy))
             return false;
 
         var _self = this;

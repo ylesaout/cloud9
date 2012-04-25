@@ -28,7 +28,7 @@
       autohidehorscrollbar  = "[{require('ext/settings/settings').model}::editors/code/@autohidehorscrollbar]"
 
       contextmenu       = "mnuCtxEditor"
-      debugger          = "{this.syntax == 'javascript' ? dbg : null}"
+      debugger          = "{(this.syntax == 'javascript' || this.syntax == 'java') ? dbg : null}"
       readonly          = "{[@loading] or cloud9config.readonly or (location.host and window.stDebugProcessRunning and stDebugProcessRunning.active and [@scriptid])}"
     />
 

@@ -19,7 +19,8 @@ var JVMRuntimePlugin = module.exports = function(ide, workspace) {
     this.ide = ide;
     this.workspace = workspace;
     this.hooks = ["command"];
-    this.name = "jvm-runtime";
+    // this.name = "jvm-runtime";
+    this.name = "node-runtime";
 };
 
 sys.inherits(JVMRuntimePlugin, Plugin);
@@ -37,13 +38,15 @@ sys.inherits(JVMRuntimePlugin, Plugin);
     this.WEBAPP_START_PORT = 10000;
 
     this.command = function(user, message, client) {
-        if (!(/java|jpy|jrb|groovy|js-rhino/.test(message.runner)))
+        var cmd = (message.command || "").toLowerCase();
+        if (!(/java|jpy|jrb|groovy|js-rhino/.test(message.runner))
+            && (cmd.indexOf("debug") != -1 && !this.javaDebugProxy))
           return false;
 
         var _self = this;
 
-        var cmd = (message.command || "").toLowerCase(),
-            res = true;
+        var res = true;
+
         switch (cmd) {
             case "run":
                 this.$run(message, client);
@@ -57,10 +60,7 @@ sys.inherits(JVMRuntimePlugin, Plugin);
                 });
                 break;
             case "debugnode":
-                if (!this.javaDebugProxy)
-                    this.$error("No debug session running!", 6, message);
-                else
-                    this.javaDebugProxy.send(message.body);
+                this.javaDebugProxy.send(message.body);
                 break;
             case "debugattachnode":
                 if (this.javaDebugProxy)
@@ -91,9 +91,8 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         var _self = this;
 
         var seq = 8081;
-        var debugClient = this.debugClient = new JdbClient('localhost', this.JAVA_DEBUG_PORT);
 
-        var appPath = '/Users/eweda/workspace/cloud9/support/lib-javadebug/test';
+        var appPath = '/home/eweda/runtime-CodeCompletePlugin.Cloud9Eclipse/test/src';
         var debugOptions = {
             main_class: 'timeloop',
             port: port,
@@ -105,20 +104,39 @@ sys.inherits(JVMRuntimePlugin, Plugin);
         if (this.javaDebugProxy)
             return this.$error("Debug session already running", 4, message);
 
-        this.javaDebugProxy = new JavaDebugProxy(port);
+        this.javaDebugProxy = new JavaDebugProxy(this.JAVA_DEBUG_PORT, debugOptions);
         this.javaDebugProxy.on("message", function(body) {
             var msg = {
                 "type": "node-debug",
                 "body": body
             };
+            if (body && body.event === 'output')
+                send('stdout', body.body.text);
+            else if (body && body.event === 'error')
+                send('stderr', body.body.text);
+            else
             _self.ide.broadcast(JSON.stringify(msg), _self.name);
         });
 
+        function send(stream, data) {
+            var message = {
+                "type": "node-data",
+                "stream": stream,
+                "data": data.toString("utf8")
+            };
+            _self.ide.broadcast(JSON.stringify(message), _self.name);
+        }
+
         this.javaDebugProxy.on("connection", function() {
+            _self.debugClient = true;
+            _self.instance = true;
+            _self.workspace.getExt("state").publishState();
+            _self.ide.broadcast('{"type": "node-start"}', _self.name);
             _self.ide.broadcast('{"type": "node-debug-ready"}', _self.name);
         });
 
         this.javaDebugProxy.on("end", function(err) {
+            console.log('javaDebugProxy terminated');
             // in case an error occured, send a message back to the client
             if (err) {
                 // TODO: err should be an exception instance with more fields
@@ -131,7 +149,6 @@ sys.inherits(JVMRuntimePlugin, Plugin);
                     _self.child.removeAllListeners("exit");
                 // in this case the debugger process is still running. We need to
                 // kill that process, while not interfering with other parts of the source.
-                _self.$kill();
                 _self.$procExit(true);
             }
             if (_self.javaDebugProxy === this)
@@ -268,22 +285,20 @@ sys.inherits(JVMRuntimePlugin, Plugin);
     };
 
     this.$procExit = function(noBroadcast) {
+        console.log('$procExit called');
         if (!noBroadcast)
             this.ide.broadcast(JSON.stringify({"type": "node-exit"}), this.name);
 
         if (this.instance) {
             try {
-                this.instance.kill();
+                // In debug, instance is only a boolean
+                this.instance.kill && this.instance.kill();
             }
             catch(e) {}
         }
 
         if (this.debugClient) {
-            // TODO disconnect if not already disconnected
-            this.debugClient.emitter.removeAllListeners('event:output');
-            this.debugClient.emitter.removeAllListeners('event:error');
-            this.debugClient.emitter.removeAllListeners('event:break');
-            this.debugClient.disconnect();
+            // TODO disconnect javaDebugProxy if not already disconnected
         }
         this.workspace.getExt("state").publishState();
 

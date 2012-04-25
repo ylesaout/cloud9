@@ -5,20 +5,24 @@
 var sys = require("sys");
 var NodeSocket = require("v8debug/NodeSocket");
 var StandaloneV8DebuggerService = require("v8debug/StandaloneV8DebuggerService");
+var MessageReader = require("v8debug/MessageReader");
 
 var DebugProxy = module.exports = function(port, debugOptions) {
+    
+    this.options = debugOptions;
+
     process.EventEmitter.call(this);
     var _self = this;
 
     this.connected = false;
 
-    var socket = new NodeSocket("localhost", port);
+    var socket = this.socket = new NodeSocket("localhost", port);
     socket.on("end", function(errorInfo) {
         _self.connected = false;
         _self.emit("end", errorInfo);
     });
 
-    var service = _self.service = new StandaloneV8DebuggerService(socket);
+    var service = this.service = new StandaloneV8DebuggerService(socket);
 
     service.addEventListener("connect", function() {
         _self.connected = true;
@@ -26,6 +30,7 @@ var DebugProxy = module.exports = function(port, debugOptions) {
     });
 
     service.addEventListener("debugger_command_0", function(msg) {
+        console.log("to client: " + JSON.stringify(msg) + "\n\n");
         _self.emit("message", msg.data);
     });
 };
@@ -35,28 +40,33 @@ sys.inherits(DebugProxy, process.EventEmitter);
 (function() {
 
     this.connect = function() {
-    	var reader = new MessageReader(socket, function(messageText) {
+        var _self = this;
+    	var reader = new MessageReader(this.socket, function(messageText) {
 	    	// Validate init and error procedures, if any
 	        console.log("Init>", messageText);
 	        reader.destroy();
 	    });
 
-	    // Init debug
-	    this.send({
-	      seq: 0,
-	      type: 'request',
-	      command: 'init',
-	      arguments: {
-	        address:  { port: debugOptions.port },
-	        main_class: debugOptions.main_class,
-	        classpath: debugOptions.classpath,
-	        sourcepath: debugOptions.sourcepath
-	      }
-	    });
         this.service.attach(0, function() {});
+
+        // Init debug
+        setTimeout(function() {
+            _self.send({
+              seq: 0,
+              type: 'request',
+              command: 'init',
+              arguments: {
+                address:  { port: _self.options.port },
+                main_class: _self.options.main_class,
+                classpath: _self.options.classpath,
+                sourcepath: _self.options.sourcepath
+              }
+            });
+        }, 1000);
     };
 
     this.send = function(msgJson) {
+        console.log("from client: " + JSON.stringify(msgJson) + "\n\n");
         this.service.debuggerCommand(0, JSON.stringify(msgJson));
     };
 
