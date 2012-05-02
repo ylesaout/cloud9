@@ -110,9 +110,6 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                 stDebugProcessRunning.setProperty("active", !!message.debugClient);
                 stProcessRunning.setProperty("active", !!message.processRunning);
 
-                stDebugProcessRunning.setProperty("active", message.debugClient || message.nodeDebugClient);
-                stProcessRunning.setProperty("active", message.processRunning || message.nodeProcessRunning || message.pythonProcessRunning || message.javaProcessRunning);
-
                 dbgNode.setProperty("strip", message.workspaceDir + "/");
                 ide.dispatchEvent("noderunnerready");
                 break;
@@ -122,16 +119,12 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                 if (message.code == 1) {
                     stDebugProcessRunning.setProperty("active", false);
                     stProcessRunning.setProperty("active", true);
-
-                    //ide.send({"command": "state"});
                     break;
                 }
                 // debug process already running
                 else if (message.code == 5) {
                     stDebugProcessRunning.setProperty("active", true);
                     stProcessRunning.setProperty("active", true);
-
-                    //ide.send({"command": "state"});
                     break;
                 }
 
@@ -161,7 +154,7 @@ module.exports = ext.register("ext/noderunner/noderunner", {
                     });
                 }
 
-                ide.send({"command": "state"});
+                ide.send({"command": "state", "action": "publish"});
                 break;
         }
     },
@@ -184,6 +177,8 @@ module.exports = ext.register("ext/noderunner/noderunner", {
         if (stProcessRunning.active || !stServerConnected.active || typeof path != "string")
             return false;
 
+        stProcessRunning.activate()
+
         if (nodeVersion == 'default')
             nodeVersion = "";
 
@@ -193,7 +188,7 @@ module.exports = ext.register("ext/noderunner/noderunner", {
         var command = {
             "command" : apf.isTrue(debug) ? "RunDebugBrk" : "Run",
             "file"    : path.replace(/^\/+/, ""),
-            "runner"  : ddRunnerSelector.value, // Explicit addition; trying to affect as less logic as possible for now...
+            "runner"  : ddRunnerSelector.value,
             "args"    : args || "",
             "version" : nodeVersion || settings.model.queryValue("auto/node-version/@version") || this.NODE_VERSION,
             "env"     : {
@@ -209,9 +204,10 @@ module.exports = ext.register("ext/noderunner/noderunner", {
 
         ide.send({
             "command": "kill",
-            "runner"  : ddRunnerSelector.value, // Explicit addition; trying to affect as less logic as possible for now...
+            "runner" : ddRunnerSelector.value,
             "pid"    : this.nodePid
         });
+        ide.send({"command": "state", "action": "publish"});
     },
 
     enable : function(){
