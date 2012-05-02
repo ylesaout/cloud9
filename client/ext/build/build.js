@@ -90,7 +90,9 @@ module.exports = ext.register("ext/build/build", {
                         });
                     };
                     var sortedProblems = filterType("error").concat(filterType("warning"));
-                    _self.$model.load(apf.getXml('<problems>' + _self.problemsJsonToXml(sortedProblems) + '</problems>'));
+                    var problemsXML = _self.problemsJsonToXml(sortedProblems);
+                    console.log(problemsXML);
+                    _self.$model.load(apf.getXml('<problems>' + problemsXML + '</problems>'));
                 }
             }
         });
@@ -119,13 +121,16 @@ module.exports = ext.register("ext/build/build", {
     },
 
     problemsJsonToXml: function(problems) {
+        function escape(str) {
+            return str.replace(/"/g, "'");
+        }
         var xmlS = [];
         var filePrefix = '/' + window.cloud9config.projectName + '/';
         for (var i = 0; i < problems.length; i++) {
             var elem = problems[i];
             xmlS.push('<problem');
                 xmlS.push(' icon="'); xmlS.push(elem.type || "warning");
-                xmlS.push('" desc="'); xmlS.push(elem.message);
+                xmlS.push('" desc="'); xmlS.push(escape(elem.message));
                 xmlS.push('" path="'); xmlS.push(filePrefix); xmlS.push(elem.file);
                 xmlS.push('" file="'); xmlS.push(elem.file.substring(elem.file.lastIndexOf('/')+1));
                 xmlS.push('" line="') && xmlS.push(elem.line);
