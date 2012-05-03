@@ -24,6 +24,8 @@ define(function(require, exports, module) {
         this.readonly       = window.cloud9config.readonly;
         this.projectName    = window.cloud9config.projectName;
 
+console.log("window.cloud9config", window.cloud9config.contexts);        
+        
         this.loggedIn       = true;
 
         this.onLine         = false;

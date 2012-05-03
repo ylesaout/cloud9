@@ -60,7 +60,8 @@ module.exports = function setup(options, imports, register) {
             },
             plugins: options.clientPlugins || [],
             bundledPlugins: options.bundledPlugins || [],
-            hosted: options.hosted
+            hosted: options.hosted,
+            contexts: options.contexts || {}
         });
 
         register(null, {

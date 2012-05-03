@@ -49,7 +49,8 @@ var Ide = module.exports = function(options) {
         version: options.version,
         extra: options.extra,
         real: options.real,
-        hosted: !!options.hosted
+        hosted: !!options.hosted,
+        contexts: options.contexts
     };
 
     this.$users = {};
@@ -134,7 +135,8 @@ util.inherits(Ide, EventEmitter);
                 scripts: (_self.options.debug || _self.options.real) ? "" : aceScripts,
                 projectName: _self.options.projectName,
                 version: _self.options.version,
-                hosted: _self.options.hosted.toString()
+                hosted: _self.options.hosted.toString(),
+                contexts: _self.options.contexts
             };
 
             var settingsPlugin = _self.workspace.getExt("settings");
